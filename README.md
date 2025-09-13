@@ -1,7 +1,5 @@
 Proyecto seminario 1 2025-2
-Claro 👍 aquí te dejo el contenido **todo junto en un solo bloque de Markdown**, listo para pegar en un `README.md`:
 
-````markdown
 # 1. ¿Qué ambiente va a elegir? ¿Es suficientemente complejo para el proyecto complejo?
 
 El ambiente elegido para el proyecto es **Minecraft Java Edition**, ejecutado en un servidor **Spigot** con el plugin **RaspberryJuice**, lo que permite el control mediante scripts en **Python** a través de la librería `mcpi`.  
