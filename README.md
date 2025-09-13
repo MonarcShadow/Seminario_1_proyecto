@@ -196,7 +196,3 @@ C:/MinecraftAgente/
 
 ```
 
----
-
-¿Quieres que también le agregue un **índice al inicio con enlaces internos** a cada sección (como suelen tener los README grandes en GitHub)?
-```
