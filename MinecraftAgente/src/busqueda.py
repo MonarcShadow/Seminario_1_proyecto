@@ -1,53 +1,142 @@
+import time
+import heapq
 from collections import deque
 
-def bfs_todos(laberinto, inicio, salida):
-    """BFS que explora todo y retorna caminos fallidos + camino correcto + métricas"""
-    queue = deque([[inicio]])
-    visitados = set()
-    caminos_fallidos = []
-    camino_final = None
+# ---------------------
+# BFS
+# ---------------------
+def bfs(laberinto, inicio, salida):
+    start_time = time.time()
+    queue = deque([(inicio, [inicio])])
+    visitados = set([inicio])
     nodos_expandidos = 0
-    revisitas = 0
     profundidad_max = 0
 
     while queue:
-        camino = queue.popleft()
-        nodo = camino[-1]
-        if nodo in visitados:
-            revisitas += 1
-            continue
-        visitados.add(nodo)
-
+        (x, z), camino = queue.popleft()
         nodos_expandidos += 1
         profundidad_max = max(profundidad_max, len(camino))
 
-        if nodo == salida:
-            camino_final = camino
-            continue  # seguimos para capturar más caminos
+        if (x, z) == salida:
+            return camino, {
+                "nodos_expandidos": nodos_expandidos,
+                "longitud": len(camino),
+                "profundidad_max": profundidad_max,
+                "tiempo": round(time.time() - start_time, 4),
+                "optimo": "Sí"
+            }
 
-        # Expansión
-        for vecino in vecinos(laberinto, nodo):
-            nuevo_camino = list(camino)
-            nuevo_camino.append(vecino)
-            queue.append(nuevo_camino)
+        for dx, dz in [(1,0), (-1,0), (0,1), (0,-1)]:
+            nx, nz = x+dx, z+dz
+            if (nx, nz) in laberinto and laberinto[(nx, nz)] == 0 and (nx, nz) not in visitados:
+                visitados.add((nx, nz))
+                queue.append(((nx, nz), camino + [(nx, nz)]))
 
-        caminos_fallidos.append(camino)
+    return None, {}
 
-    metricas = {
-        "nodos_expandidos": nodos_expandidos,
-        "profundidad_max": profundidad_max,
-        "revisitas": revisitas,
-    }
+# ---------------------
+# DFS
+# ---------------------
+def dfs(laberinto, inicio, salida):
+    start_time = time.time()
+    stack = [(inicio, [inicio])]
+    visitados = set()
+    nodos_expandidos = 0
+    profundidad_max = 0
 
-    return caminos_fallidos, camino_final, metricas
+    while stack:
+        (x, z), camino = stack.pop()
+        nodos_expandidos += 1
+        profundidad_max = max(profundidad_max, len(camino))
 
+        if (x, z) == salida:
+            return camino, {
+                "nodos_expandidos": nodos_expandidos,
+                "longitud": len(camino),
+                "profundidad_max": profundidad_max,
+                "tiempo": round(time.time() - start_time, 4),
+                "optimo": "No"
+            }
 
-def vecinos(laberinto, nodo):
-    x, z = nodo
-    movimientos = [(1,0), (-1,0), (0,1), (0,-1)]
-    res = []
-    for dx, dz in movimientos:
-        nx, nz = x+dx, z+dz
-        if (nx, nz) in laberinto and laberinto[(nx,nz)] == 0:  # 0 = camino
-            res.append((nx, nz))
-    return res
+        if (x, z) not in visitados:
+            visitados.add((x, z))
+            for dx, dz in [(1,0), (-1,0), (0,1), (0,-1)]:
+                nx, nz = x+dx, z+dz
+                if (nx, nz) in laberinto and laberinto[(nx, nz)] == 0:
+                    stack.append(((nx, nz), camino + [(nx, nz)]))
+
+    return None, {}
+
+# ---------------------
+# Greedy Best-First
+# ---------------------
+def greedy(laberinto, inicio, salida):
+    start_time = time.time()
+    heap = [(heuristica(inicio, salida), inicio, [inicio])]
+    visitados = set()
+    nodos_expandidos = 0
+    profundidad_max = 0
+
+    while heap:
+        _, (x, z), camino = heapq.heappop(heap)
+        nodos_expandidos += 1
+        profundidad_max = max(profundidad_max, len(camino))
+
+        if (x, z) == salida:
+            return camino, {
+                "nodos_expandidos": nodos_expandidos,
+                "longitud": len(camino),
+                "profundidad_max": profundidad_max,
+                "tiempo": round(time.time() - start_time, 4),
+                "optimo": "No"
+            }
+
+        if (x, z) not in visitados:
+            visitados.add((x, z))
+            for dx, dz in [(1,0), (-1,0), (0,1), (0,-1)]:
+                nx, nz = x+dx, z+dz
+                if (nx, nz) in laberinto and laberinto[(nx, nz)] == 0:
+                    heapq.heappush(heap, (heuristica((nx, nz), salida), (nx, nz), camino + [(nx, nz)]))
+
+    return None, {}
+
+# ---------------------
+# A*
+# ---------------------
+def a_star(laberinto, inicio, salida):
+    start_time = time.time()
+    heap = [(heuristica(inicio, salida), 0, inicio, [inicio])]
+    visitados = set()
+    nodos_expandidos = 0
+    profundidad_max = 0
+
+    while heap:
+        f, g, (x, z), camino = heapq.heappop(heap)
+        nodos_expandidos += 1
+        profundidad_max = max(profundidad_max, len(camino))
+
+        if (x, z) == salida:
+            return camino, {
+                "nodos_expandidos": nodos_expandidos,
+                "longitud": len(camino),
+                "profundidad_max": profundidad_max,
+                "tiempo": round(time.time() - start_time, 4),
+                "optimo": "Sí"
+            }
+
+        if (x, z) not in visitados:
+            visitados.add((x, z))
+            for dx, dz in [(1,0), (-1,0), (0,1), (0,-1)]:
+                nx, nz = x+dx, z+dz
+                if (nx, nz) in laberinto and laberinto[(nx, nz)] == 0:
+                    g2 = g + 1
+                    f2 = g2 + heuristica((nx, nz), salida)
+                    heapq.heappush(heap, (f2, g2, (nx, nz), camino + [(nx, nz)]))
+
+    return None, {}
+
+# ---------------------
+# Heurística Manhattan
+# ---------------------
+def heuristica(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
