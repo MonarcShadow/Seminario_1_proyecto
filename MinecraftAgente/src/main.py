@@ -223,15 +223,13 @@ for i in range(len(paredes_laberinto)):
     ruta_rutas = os.path.join("..", "resultados", nombre_rutas)
     fig.savefig(ruta_rutas, dpi=200)
     print(f"Gráfico de rutas guardado en: {ruta_rutas}")
-
-    # --- FIN DE CAMBIOS ---
     
     plt.ioff()
     plt.show() # Muestra el gráfico de rutas
     plt.close(fig) # Cierra la figura para liberar memoria
 
     # -------------------------
-    # Guardar métricas (sin cambios aquí)
+    # Guardar métricas
     # -------------------------
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     #csv_path = os.path.join("..", "resultados", f"metricas_laberinto_{i+1}_{timestamp}.csv")
@@ -259,7 +257,7 @@ for i in range(len(paredes_laberinto)):
     ax_heatmap.scatter(grid_inicio[0], grid_inicio[1], c="green", marker="o", s=140)
     ax_heatmap.scatter(grid_salida[0], grid_salida[1], c="red", marker="*", s=180)
     
-    # --- INICIO DE CAMBIOS ---
+
     
     # 3. Guardar el mapa de calor con nombre dinámico
     print("numero de laberinto:", i+1)
@@ -268,7 +266,7 @@ for i in range(len(paredes_laberinto)):
     fig_heatmap.savefig(ruta_heatmap, dpi=200)
     print(f"Mapa de calor guardado en: {ruta_heatmap}")
     
-    # --- FIN DE CAMBIOS ---
+    
     
     plt.show() # Muestra el mapa de calor
     plt.close(fig_heatmap) # Cierra la figura del heatmap
