@@ -1,0 +1,5 @@
+Algoritmo,Longitud,NodosExpandidos,ProfundidadMax,Tiempo(s),Optimo
+BFS,83,339,83,0.0,Sí
+DFS,147,739,165,0.001,No
+Greedy,87,285,87,0.0,No
+A*,83,686,83,0.0,Sí
