@@ -6,9 +6,6 @@ import numpy as np
 
 from agente import Agente
 from laberinto import generar_laberinto
-from laberinto import generarlaberinto1
-from laberinto import generarlaberinto2
-from laberinto import generarlaberinto3
 from busqueda import bfs, dfs, greedy, a_star
 
 #definir muros del laberinto
@@ -96,11 +93,11 @@ for i in range(len(paredes_laberinto)):
         laberinto[(x, z)] = 1
 
     # Perímetro como muro
-    for i in range(N):
-        laberinto[(i, 0)] = 1
-        laberinto[(i, N-1)] = 1
-        laberinto[(0, i)] = 1
-        laberinto[(N-1, i)] = 1
+    for ii in range(N):
+        laberinto[(ii, 0)] = 1
+        laberinto[(ii, N-1)] = 1
+        laberinto[(0, ii)] = 1
+        laberinto[(N-1, ii)] = 1
 
     # -------------------------
     # Ejecutar algoritmos de búsqueda
@@ -123,6 +120,7 @@ for i in range(len(paredes_laberinto)):
     # Inicializar agente
     # -------------------------
     agente = Agente(inicio_world)
+
 
     # -------------------------
     # Configurar gráfico
@@ -194,38 +192,61 @@ for i in range(len(paredes_laberinto)):
     # Guardar métricas con fecha y hora
     # -------------------------
     os.makedirs("../resultados", exist_ok=True)
+    
+    # 2. Guardar el gráfico de rutas con nombre dinámico
+    # Se usa `i+1` para que los nombres sean laberinto_1, laberinto_2, etc.
+    nombre_rutas = f"rutas_laberinto_{i+1}.png"
+    ruta_rutas = os.path.join("..", "resultados", nombre_rutas)
+    fig.savefig(ruta_rutas, dpi=200)
+    print(f"Gráfico de rutas guardado en: {ruta_rutas}")
 
+    # --- FIN DE CAMBIOS ---
+    
+    plt.ioff()
+    plt.show() # Muestra el gráfico de rutas
+    plt.close(fig) # Cierra la figura para liberar memoria
+
+    # -------------------------
+    # Guardar métricas (sin cambios aquí)
+    # -------------------------
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = os.path.join("..", "resultados", f"metricas_{timestamp}.csv")
+    #csv_path = os.path.join("..", "resultados", f"metricas_laberinto_{i+1}_{timestamp}.csv")
+    csv_path = os.path.join("..", "resultados", f"metricas_laberinto_{i+1}.csv")
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Algoritmo", "Longitud", "NodosExpandidos", "ProfundidadMax", "Tiempo(s)", "Optimo"])
         for nombre, datos in resultados.items():
             m = datos["metricas"]
-            writer.writerow([
-                nombre,
-                m.get("longitud", 0),
-                m.get("nodos_expandidos", 0),
-                m.get("profundidad_max", 0),
-                m.get("tiempo", 0),
-                m.get("optimo", "No")
-            ])
+            writer.writerow([nombre, m.get("longitud",0), m.get("nodos_expandidos",0), m.get("profundidad_max",0), m.get("tiempo",0), m.get("optimo","No")])
 
     # -------------------------
     # Heatmap de visitas
     # -------------------------
     visitas = np.zeros((N, N), dtype=int)
     for nombre, datos in resultados.items():
-        for (mx, mz) in datos["camino"] or []:
+        for (mx, mz) in datos.get("camino") or []:
             visitas[mz, mx] += 1
+            
+    fig_heatmap, ax_heatmap = plt.subplots(figsize=(6,6))
+    ax_heatmap.set_title(f"Mapa de calor de exploración - Laberinto {i+1}")
+    img = ax_heatmap.imshow(visitas, cmap="hot", origin="lower", extent=[-0.5, N-0.5, -0.5, N-0.5])
+    plt.colorbar(img, ax=ax_heatmap, label="Número de visitas")
+    ax_heatmap.scatter(grid_inicio[0], grid_inicio[1], c="green", marker="o", s=140)
+    ax_heatmap.scatter(grid_salida[0], grid_salida[1], c="red", marker="*", s=180)
+    
+    # --- INICIO DE CAMBIOS ---
+    
+    # 3. Guardar el mapa de calor con nombre dinámico
+    print("numero de laberinto:", i+1)
+    nombre_heatmap = f"heatmap_laberinto_{i+1}.png"
+    ruta_heatmap = os.path.join("..","resultados", nombre_heatmap)
+    fig_heatmap.savefig(ruta_heatmap, dpi=200)
+    print(f"Mapa de calor guardado en: {ruta_heatmap}")
+    
+    # --- FIN DE CAMBIOS ---
+    
+    plt.show() # Muestra el mapa de calor
+    plt.close(fig_heatmap) # Cierra la figura del heatmap
 
-    plt.figure(figsize=(6,6))
-    plt.title("Mapa de calor de exploración (todos algoritmos)")
-    img = plt.imshow(visitas, cmap="hot", origin="lower", extent=[-0.5, N-0.5, -0.5, N-0.5])
-    plt.colorbar(img, label="Número de visitas")
-    plt.scatter(grid_inicio[0], grid_inicio[1], c="green", marker="o", s=140)
-    plt.scatter(grid_salida[0], grid_salida[1], c="red", marker="*", s=180)
-    plt.savefig(os.path.join("..","resultados","heatmap.png"), dpi=200)
-    plt.show()
-
+print("Proceso completado.")
