@@ -183,6 +183,12 @@ Esto iniciará el agente y permitirá su interacción con el servidor a través 
 
 ```plaintext
 C:/MinecraftAgente/
+├── Prueba_de_Conseptos/
+│   ├── agente_pc.py
+│   ├── busqueda_pc.py
+│   ├── estrategia_simple_pc.py
+│   └── main_pc.py
+├── resultados/
 ├── servidor/
 │   ├── BuildTools.jar
 │   ├── spigot-1.11.jar
@@ -191,7 +197,12 @@ C:/MinecraftAgente/
 │   ├── eula.txt
 │   └── server.properties
 └── src/
+    ├── agente.py
+    ├── busqueda.py
+    ├── construir_mapa.py
+    ├── laberinto.py
     └── main.py
+
 ```
 
 ```
