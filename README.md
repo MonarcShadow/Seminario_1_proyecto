@@ -30,10 +30,14 @@ Para el desarrollo del proyecto se trabajó con la **versión de Minecraft 1.11*
 
 El repositorio del proyecto mantiene la siguiente organización:
 
+- **Prueba_de_Conseptos**: versión reducida del sistema donde se demuestra de forma simple la separación entre agente y ambiente.  
+- **resultados**: carpeta donde se almacenan automáticamente las métricas obtenidas de los experimentos en formato CSV, así como gráficos generados con `matplotlib`.  
 - **servidor**: contiene los archivos necesarios para ejecutar Minecraft (`BuildTools`, `spigot-1.11.jar`, el plugin RaspberryJuice, configuración del servidor).  
-- **src**: código fuente en Python que implementa el agente, estrategias de búsqueda y generación de métricas.  
+- **src**: código fuente en Python que implementa el agente, estrategias de búsqueda y generación de métricas en el entorno de Minecraft.  
 
-📂 **Repositorio del proyecto:** [enlace-al-repositorio]  
+
+
+📂 **Repositorio del proyecto:** [[enlace-al-repositorio](https://github.com/MonarcShadow/Seminario_1_proyecto)]  
 ☁️ **OneDrive con dependencias y versiones utilizadas:** [Google Drive](https://drive.google.com/drive/folders/1k0YW0Tz8DlNd0vtrD2Yc2JMkU5tlLdX1?usp=drive_link)
 
 ---
