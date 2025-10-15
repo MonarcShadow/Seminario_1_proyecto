@@ -33,15 +33,15 @@ missionXML = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
       
       <!-- Crear área de juego: plataforma de spawn y agua -->
       <DrawingDecorator>
-        <!-- Plataforma de spawn segura (césped) -->
-        <DrawCuboid x1="-5" y1="3" z1="-5" x2="5" y2="3" z2="5" type="grass"/>
+        <!-- Plataforma grande de césped para que el agente explore -->
+        <DrawCuboid x1="-20" y1="3" z1="-20" x2="20" y2="3" z2="20" type="grass"/>
         
         <!-- Agua cerca para que el agente la encuentre -->
-        <DrawCuboid x1="8" y1="3" z1="8" x2="15" y2="3" z2="15" type="water"/>
-        <DrawCuboid x1="-15" y1="3" z1="-15" x2="-8" y2="3" z2="-8" type="water"/>
+        <DrawCuboid x1="10" y1="3" z1="10" x2="15" y2="3" z2="15" type="water"/>
+        <DrawCuboid x1="-15" y1="3" z1="-15" x2="-10" y2="3" z2="-10" type="water"/>
         
-        <!-- Limpiar espacio arriba para evitar asfixia -->
-        <DrawCuboid x1="-5" y1="4" z1="-5" x2="5" y2="10" z2="5" type="air"/>
+        <!-- Limpiar espacio arriba -->
+        <DrawCuboid x1="-20" y1="4" z1="-20" x2="20" y2="10" z2="20" type="air"/>
       </DrawingDecorator>
       
       <ServerQuitWhenAnyAgentFinishes/>
@@ -69,8 +69,7 @@ missionXML = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
       
       <RewardForSendingCommand reward="-1.0"/>
       
-      <!-- Comandos -->
-      <ContinuousMovementCommands/>
+      <!-- Comandos - Solo discretos para movimiento preciso -->
       <DiscreteMovementCommands/>
       
       <!-- Condiciones de salida -->
@@ -98,25 +97,29 @@ def get_state(obs):
     Retorna: (estado, sugerencia_direccion)
     """
     # Obtener información básica
-    yaw = obs.get("Yaw", 0)
-    life = obs.get("Life", 20)
+    y_pos = obs.get("YPos", 4)
+    x_pos = obs.get("XPos", 0)
+    z_pos = obs.get("ZPos", 0)
     
-    # Verificar si está en agua usando LineOfSight
-    los = obs.get("LineOfSight", {})
-    los_type = los.get("type", "") if isinstance(los, dict) else ""
+    # Verificar si está en agua por posición
+    # El agua está en (10-15, 3, 10-15) o (-15--10, 3, -15--10)
+    agua_zona1 = 10 <= x_pos <= 15 and 10 <= z_pos <= 15
+    agua_zona2 = -15 <= x_pos <= -10 and -15 <= z_pos <= -10
     
-    water_blocks = ["water", "flowing_water"]
-    if los_type in water_blocks:
+    if agua_zona1 or agua_zona2:
+        print("🎯 ¡AGUA DETECTADA POR POSICIÓN!")
         return State.WATER_FOUND, None
     
-    # Usar distancia y dirección para detectar peligros/obstáculos
-    # (Simplificado sin grid - se basará más en movimiento aleatorio inteligente)
+    # Verificar usando LineOfSight
+    los = obs.get("LineOfSight", {})
+    if isinstance(los, dict):
+        los_type = los.get("type", "")
+        water_blocks = ["water", "flowing_water", "stationary_water"]
+        if los_type in water_blocks:
+            print("🎯 ¡AGUA DETECTADA POR LINE OF SIGHT!")
+            return State.WATER_FOUND, None
     
-    # Si la vida bajó, probablemente cayó o hay peligro
-    if life < 19:
-        return State.DANGER_FALL, "turn"
-    
-    # Estado por defecto: buscando
+    # Siempre buscar (modo exploración activo)
     return State.SEARCHING, "forward"
 
 # ========== PROBABILIDAD DE ENCONTRAR OBJETIVO ==========
@@ -171,30 +174,39 @@ def calculate_reward(state, action, prev_state, total_steps):
     return base_reward + time_penalty + progress_bonus
 
 # ========== FUNCIÓN DE SELECCIÓN DE ACCIÓN ==========
-def select_action(state, direction_hint, probabilities):
+# Variables globales para estrategia de búsqueda en espiral
+steps_in_direction = 0
+steps_before_turn = 8  # Caminar 8 pasos antes de girar
+turns_made = 0
+
+def select_action(state, direction_hint, probabilities, step_count):
     """
-    Selecciona acción basada en estado y probabilidades
+    Selecciona acción basada en estado con estrategia de búsqueda en espiral
+    Usa comandos DISCRETOS para movimiento preciso
     """
+    global steps_in_direction, steps_before_turn, turns_made
+    
     if state == State.WATER_FOUND:
+        print("🎉 ¡MISIÓN COMPLETA! Agua encontrada")
         return "stop"
     
-    if direction_hint == "turn":
-        # Elegir dirección con mayor probabilidad
-        best_direction = max(probabilities.items(), key=lambda x: x[1])[0]
-        if best_direction == "east":
-            return "turn 0.5"
-        elif best_direction == "west":
-            return "turn -0.5"
-        else:
-            return "turn 1.0"
-    
-    elif direction_hint == "jump":
-        return "jump 1"
-    
-    elif direction_hint == "forward":
+    # Estrategia de búsqueda en espiral/patrón
+    if steps_in_direction >= steps_before_turn:
+        # Es hora de girar
+        steps_in_direction = 0
+        turns_made += 1
+        
+        # Cada 2 giros, aumentar la distancia antes de girar (espiral)
+        if turns_made % 2 == 0:
+            steps_before_turn += 3
+        
+        # COMANDO DISCRETO: girar 90 grados a la derecha
+        return "turn 1"
+    else:
+        # Continuar en la dirección actual
+        steps_in_direction += 1
+        # COMANDO DISCRETO: mover 1 bloque hacia adelante
         return "move 1"
-    
-    return "move 0"
 
 # ========== INICIAR MISIÓN ==========
 mission = Malmo.MissionSpec(missionXML, True)
@@ -222,7 +234,7 @@ current_state = State.SEARCHING
 previous_state = State.SEARCHING
 total_reward = 0
 step_count = 0
-max_steps = 500
+max_steps = 1000  # Aumentado para dar más tiempo de exploración
 
 while world_state.is_mission_running and step_count < max_steps:
     world_state = agent_host.getWorldState()
@@ -255,23 +267,29 @@ while world_state.is_mission_running and step_count < max_steps:
         # Calcular recompensa
         step_reward = calculate_reward(current_state, None, previous_state, step_count)
         
-        # Seleccionar acción
-        action = select_action(current_state, direction_hint, probabilities)
+        # Seleccionar acción con estrategia de espiral
+        action = select_action(current_state, direction_hint, probabilities, step_count)
         
-        # Mostrar información
-        print(f"\n📍 Paso {step_count}")
-        print(f"   Posición: ({x:.1f}, {y:.1f}, {z:.1f}) Yaw: {yaw:.1f}°")
-        print(f"   Estado: {current_state}")
-        print(f"   Vida: {obs.get('Life', 20):.1f}")
-        print(f"   Probabilidades: N:{probabilities['north']:.2f} S:{probabilities['south']:.2f} "
-              f"E:{probabilities['east']:.2f} W:{probabilities['west']:.2f}")
-        print(f"   Acción: {action}")
-        print(f"   Recompensa acumulada: {total_reward:.1f}")
+        # Mostrar información (cada 5 pasos para mejor seguimiento)
+        if step_count % 5 == 0 or current_state == State.WATER_FOUND:
+            print(f"\n📍 Paso {step_count}")
+            print(f"   Posición: ({x:.1f}, {y:.1f}, {z:.1f}) Yaw: {yaw:.1f}°")
+            print(f"   Estado: {current_state}")
+            print(f"   Vida: {obs.get('Life', 20):.1f}")
+            print(f"   Pasos en dirección: {steps_in_direction}/{steps_before_turn}, Giros: {turns_made}")
+            print(f"   Comando: '{action}'")
+            print(f"   Recompensa acumulada: {total_reward:.1f}")
         
         # Ejecutar acción
-        if action != "stop":
+        if action == "stop":
+            print("🛑 Deteniendo agente")
+            break
+        else:
+            # Ejecutar comando discreto
+            print(f"   ➤ Enviando: {action}", end="")
             agent_host.sendCommand(action)
-            time.sleep(0.5)
+            print(" ✓")
+            time.sleep(0.8)  # Más tiempo para completar movimiento discreto
         
         step_count += 1
     
