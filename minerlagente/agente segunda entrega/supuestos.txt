@@ -1,0 +1,4 @@
+ciclo dia noche pausado
+clima estatico(no tormetas)
+los giros seran de 90 grados a izquierda y derecha
+no se generan mobs hostiles
