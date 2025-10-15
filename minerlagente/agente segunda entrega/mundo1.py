@@ -89,12 +89,12 @@ while not world_state.has_mission_begun:
 print("\n¡Misión iniciada! 🚀")
 
 
-for _ in range(50):
-    #agent_host.sendCommand("move 1")
-    #agent_host.sendCommand("jump 1")
+for _ in range(100):
+    agent_host.sendCommand("move 1")
+    agent_host.sendCommand("jump 1")
     time.sleep(0.1)
-#agent_host.sendCommand("move 0")
-#agent_host.sendCommand("jump 0")
+agent_host.sendCommand("move 0")
+agent_host.sendCommand("jump 0")
 print("Tipo de world_state:", type(world_state))
 print("Atributos:", dir(world_state))
 print("Misión terminada.")

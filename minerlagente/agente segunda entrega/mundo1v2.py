@@ -29,7 +29,7 @@ missionXML = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
       <!-- Superplano: bedrock (y=0), dirt x2, grass -->
       <FlatWorldGenerator generatorString="3;7,2;1;"/>
       <DrawingDecorator>
-        <DrawBlock x="3" y="5" z="0" type="diamond_block"/>
+        <DrawBlock x="-1" y="3" z="0" type="diamond_block"/>
       </DrawingDecorator>
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
@@ -87,8 +87,11 @@ print("\n¡Misión iniciada! 🚀")
 
 # Ejemplo: no moverse, solo observar por ~5 segundos
 start_time = time.time()
-while world_state.is_mission_running and (time.time() - start_time) < 5.0:
+while world_state.is_mission_running and (time.time() - start_time) < 15.0:
     world_state = agent_host.getWorldState()
+    
+
+
 
     # Imprime errores si aparecen
     for error in world_state.errors:
@@ -107,7 +110,12 @@ while world_state.is_mission_running and (time.time() - start_time) < 5.0:
         pitch = obs.get("Pitch")
         if x is not None and y is not None and z is not None:
             print(f"Posición: ({x:.2f}, {y:.2f}, {z:.2f})  Yaw: {yaw:.1f}  Pitch: {pitch:.1f}")
-
+       
+        #agent_host.sendCommand("move 1")
+        #agent_host.sendCommand("jump 1")
+        time.sleep(1)
+        #agent_host.sendCommand("move 0")
+        #agent_host.sendCommand("jump 0")
         # Bloque mirado (ObservationFromRay)
         los = obs.get("LineOfSight")
         if los:
@@ -136,6 +144,6 @@ while world_state.is_mission_running and (time.time() - start_time) < 5.0:
                     occupied.append((slot, btype, qty))
             print("Inventario (ocupado, primeros 10):", occupied[:10])
 
-    time.sleep(0.1)
+    time.sleep(1)
 
 print("Misión terminada.")
