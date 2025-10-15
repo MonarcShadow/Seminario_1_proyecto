@@ -100,29 +100,38 @@ def get_state(obs):
             print("🎯 ¡AGUA DETECTADA POR LINE OF SIGHT!")
             return State.WATER_FOUND, None
         
-        # Detectar obstáculo cercano (bloque sólido a menos de 1.5 bloques)
-        # Excluir "tallgrass" que es hierba decorativa y se puede atravesar
-        solid_blocks = ["stone", "dirt", "grass", "sand", "gravel", "log", "leaves", 
-                       "planks", "cobblestone", "bedrock", "sandstone", "clay", "wood"]
+        # NO detectar abismos por "air" - permite bajar desniveles libremente
+        # El agente puede caer hasta 5 bloques sin daño significativo
         
-        # Solo considerar obstáculo si está MUY cerca (menos de 1.5 bloques)
-        if los_type in solid_blocks and los_distance < 1.5:
-            print(f"🚧 Obstáculo CERCA: {los_type} a {los_distance:.1f}m")
+        # Detectar obstáculos INMEDIATOS que bloquean el movimiento
+        # Incluir bloques de terreno para desniveles en mundo natural
+        
+        # Bloques sólidos que pueden ser obstáculos (incluye terreno)
+        solid_blocks = ["stone", "dirt", "grass", "sand", "gravel", "log", "wood", 
+                       "planks", "cobblestone", "bedrock", "sandstone", "clay"]
+        
+        # CLAVE: Solo considerar obstáculo si está MUY MUY cerca (< 1 bloque)
+        # Esto evita detectar bloques lejanos en el suelo como obstáculos
+        if los_type in solid_blocks and los_distance < 1.0:
+            print(f"🚧 Obstáculo INMEDIATO: {los_type} a {los_distance:.2f}m - Saltando")
             return State.OBSTACLE_AHEAD, "jump"
         
-        # Ignorar bloques decorativos como tallgrass (hierba alta)
-        if los_type == "tallgrass":
-            pass  # Ignorar, se puede pasar a través
+        # IGNORAR estos bloques (decorativos, se atraviesan)
+        passable_blocks = ["tallgrass", "leaves", "double_plant", "air", 
+                          "yellow_flower", "red_flower", "deadbush", "sapling"]
+        if los_type in passable_blocks:
+            pass  # Se puede pasar a través
     
-    # Detectar si está dentro del agua (cambio en posición Y o vida)
-    # En Minecraft, estar en agua puede cambiar ligeramente la altura
+    # Detectar caídas PELIGROSAS (solo > 5 bloques)
+    # Caídas pequeñas (1-5 bloques) son seguras en Minecraft
+    # Usamos la vida para detectar daño por caída REAL, no anticipado
     if "IsAlive" in obs and obs.get("IsAlive") == True:
-        # Si la vida está bajando podría ser por ahogamiento (agua profunda)
-        if life < 19.5:
-            print("⚠️ Vida baja - posible peligro")
+        # Solo considerar peligro si la vida está MUY baja (cayó mucho)
+        if life < 15.0:  # Menos de 15 corazones = cayó mucho o está en combate
+            print("⚠️ Vida CRÍTICA - posible caída grande o daño")
             return State.DANGER_FALL, "turn"
     
-    # Siempre buscar (modo exploración activo)
+    # Siempre buscar (modo exploración activo - permite caídas pequeñas)
     return State.SEARCHING, "forward"
 
 # ========== PROBABILIDAD DE ENCONTRAR OBJETIVO ==========
@@ -183,48 +192,60 @@ steps_before_turn = 10  # Caminar más pasos en mundo natural (más disperso)
 turns_made = 0
 last_position = (0, 0, 0)
 stuck_counter = 0
+consecutive_turns = 0  # Contador de giros consecutivos sin avanzar
 
 def select_action(state, direction_hint, probabilities, step_count, current_position):
     """
     Selecciona acción basada en estado con estrategia de búsqueda en espiral
     Usa comandos DISCRETOS para movimiento preciso
     """
-    global steps_in_direction, steps_before_turn, turns_made, last_position, stuck_counter
+    global steps_in_direction, steps_before_turn, turns_made, last_position, stuck_counter, consecutive_turns
     
     if state == State.WATER_FOUND:
         print("🎉 ¡MISIÓN COMPLETA! Agua encontrada en mundo natural")
         return "stop"
     
-    # Detectar si está atascado (misma posición por 2 intentos)
+    # Detectar si está atascado (misma posición)
     distance_moved = ((current_position[0] - last_position[0])**2 + 
                      (current_position[2] - last_position[2])**2)**0.5
     
-    if distance_moved < 0.3:  # Se movió menos de 0.3 bloques
+    if distance_moved < 0.2:  # Se movió menos de 0.2 bloques (básicamente inmóvil)
         stuck_counter += 1
-        if stuck_counter >= 2:
-            print(f"🔒 ATASCADO detectado! Saltando y avanzando...")
+        consecutive_turns += 1
+        
+        # Si lleva MUCHOS giros sin avanzar (más de 8), forzar movimiento adelante
+        if consecutive_turns > 8:
+            print(f"🚨 DEMASIADOS GIROS ({consecutive_turns})! Forzando movimiento hacia adelante...")
+            consecutive_turns = 0
             stuck_counter = 0
-            # No resetear steps_in_direction para mantener el patrón
-            return "jumpmove 1"  # Saltar y avanzar simultáneamente
+            steps_in_direction = 0
+            return "jumpmove 1"  # Intentar avanzar a la fuerza
+        
+        # ESTRATEGIA NORMAL: Girar cuando está atascado
+        if stuck_counter >= 1:
+            print(f"🔒 ATASCADO (inmóvil)! Girando 90° para buscar ruta libre...")
+            stuck_counter = 0
+            steps_in_direction = 0  # Reiniciar contador
+            return "turn 1"  # GIRAR inmediatamente
     else:
         stuck_counter = 0  # Reset si se movió exitosamente
+        consecutive_turns = 0  # Reset contador de giros si avanzó
     
     last_position = current_position
     
-    # Si hay obstáculo al frente (hierba alta o bloque bajo), saltar mientras avanza
-    if state == State.OBSTACLE_AHEAD and direction_hint == "jump":
-        print("⛰️ Saltando obstáculo mientras avanzo...")
-        stuck_counter = 0  # Reset porque estamos tomando acción
-        return "jumpmove 1"  # Saltar y avanzar simultáneamente
-    
+    # Si hay peligro, girar inmediatamente
     if state == State.DANGER_FALL:
-        # Si hay peligro, girar inmediatamente
         steps_in_direction = 0
         return "turn 1"
     
+    # Si hay obstáculo CERCANO al frente, intentar saltar Y avanzar
+    if state == State.OBSTACLE_AHEAD and direction_hint == "jump":
+        print("⛰️ Obstáculo cercano - Saltando y avanzando...")
+        return "jumpmove 1"
+    
     # Estrategia de búsqueda en espiral/patrón
     if steps_in_direction >= steps_before_turn:
-        # Es hora de girar
+        # Es hora de girar según el patrón
         steps_in_direction = 0
         turns_made += 1
         
@@ -235,10 +256,10 @@ def select_action(state, direction_hint, probabilities, step_count, current_posi
         # COMANDO DISCRETO: girar 90 grados a la derecha
         return "turn 1"
     else:
-        # Continuar en la dirección actual
+        # Continuar en la dirección actual - USAR JUMPMOVE para superar desniveles
         steps_in_direction += 1
-        # COMANDO DISCRETO: mover 1 bloque hacia adelante
-        return "move 1"
+        print(f"➡️ Avanzando con salto automático... (paso {steps_in_direction}/{steps_before_turn})")
+        return "jumpmove 1"  # En vez de "move 1", usar "jumpmove 1" por defecto
 
 # ========== INICIAR MISIÓN ==========
 mission = Malmo.MissionSpec(missionXML, True)
