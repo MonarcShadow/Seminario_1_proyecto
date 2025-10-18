@@ -717,3 +717,4 @@ echo -e "${GREEN}✓ Información guardada en:${NC}"
 echo -e "  ${BLUE}$PROJECT_DIR/.env_info${NC}"
 echo -e "  ${BLUE}$PROJECT_DIR/README_MALMO.md${NC}"
 echo ""
+cp -r $PROJECT_DIR/.vscode/ ../
