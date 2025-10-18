@@ -29,7 +29,7 @@ echo ""
 PYTHON_VERSION="3.6.15"
 VENV_NAME="malmoenv"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$PROJECT_DIR/.env"
+VENV_DIR="$HOME/.pyenv/versions/$VENV_NAME"
 ALIAS_NAME="malmoenv"
 
 # Malmo se instalará fuera del proyecto
@@ -239,7 +239,6 @@ if pyenv virtualenvs | grep -q "$VENV_NAME"; then
 fi
 
 pyenv virtualenv $PYTHON_VERSION $VENV_NAME
-ln -sf $HOME/.pyenv/versions/$VENV_NAME $VENV_DIR
 pyenv activate $VENV_NAME
 
 echo -e "${GREEN}✓ Entorno virtual creado${NC}"
@@ -695,4 +694,3 @@ echo -e "${GREEN}✓ Información guardada en:${NC}"
 echo -e "  ${BLUE}$PROJECT_DIR/.env_info${NC}"
 echo -e "  ${BLUE}$PROJECT_DIR/README_MALMO.md${NC}"
 echo ""
-sudo rm -r $VENV_DIR
