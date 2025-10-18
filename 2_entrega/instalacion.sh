@@ -588,12 +588,6 @@ VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
 mkdir -p "$VSCODE_DIR"
 
 cat > "$VSCODE_SETTINGS" << EOF
-# Configurar VSCode
-VSCODE_DIR="$PROJECT_DIR/.vscode"
-VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
-mkdir -p "$VSCODE_DIR"
-
-cat > "$VSCODE_SETTINGS" << EOF
 {
   // Extensión Python: intérprete del proyecto (pyenv)
   "python.defaultInterpreterPath": "$VENV_DIR/bin/python",
@@ -632,8 +626,6 @@ cat > "$VSCODE_SETTINGS" << EOF
 }
 EOF
 
-
-EOF
 
 # Crear archivo de variables de entorno para VSCode
 cat > "$PROJECT_DIR/.env_vars" << EOF
