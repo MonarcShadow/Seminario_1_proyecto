@@ -588,24 +588,26 @@ VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
 mkdir -p "$VSCODE_DIR"
 
 cat > "$VSCODE_SETTINGS" << EOF
-{
-  "python.defaultInterpreterPath": "/home/carlos/.pyenv/versions/malmoenv/bin/python",
-  "python.terminal.activateEnvironment": true,
-  "python.pythonPath": "/home/carlos/.pyenv/versions/malmoenv/bin/python",
-  "python.analysis.extraPaths": [
-    "/home/carlos/MalmoPlatform/Malmo-0.37.0-Linux-Ubuntu-18.04-64bit_withBoost_Python3.6/Python_Examples"
-  ],
-  "python.envFile": "${workspaceFolder}/.env_vars",
-  "files.exclude": {
-    "**/__pycache__": true,
-    "**/.pytest_cache": true
-  },
-  "python.terminal.activateEnvInCurrentTerminal": true,
-  "python-envs.defaultEnvManager": "ms-python.python:system",
-  "python-envs.pythonProjects": [],
+# Configurar VSCode
+VSCODE_DIR="$PROJECT_DIR/.vscode"
+VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
+mkdir -p "$VSCODE_DIR"
 
+cat > "$VSCODE_SETTINGS" << EOF
+{
+  // Extensión Python: intérprete del proyecto (pyenv)
+  "python.defaultInterpreterPath": "$VENV_DIR/bin/python",
+  "python.pythonPath": "$VENV_DIR/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": [
+    "$MALMO_DIR/Python_Examples"
+  ],
+  "python.envFile": "\${workspaceFolder}/.env_vars",
+  "python.terminal.activateEnvInCurrentTerminal": true,
+
+  // Code Runner: forzar a usar el python del entorno
   "code-runner.executorMap": {
-    "python": "/home/carlos/.pyenv/versions/malmoenv/bin/python"
+    "python": "$VENV_DIR/bin/python"
   },
   "code-runner.runInTerminal": true,
   "code-runner.fileDirectoryAsCwd": true,
@@ -613,14 +615,23 @@ cat > "$VSCODE_SETTINGS" << EOF
   "code-runner.clearPreviousOutput": true,
   "code-runner.respectShebang": false,
 
+  // Asegurar que la terminal cargue ~/.bashrc (pyenv init)
   "terminal.integrated.profiles.linux": {
     "bash-with-pyenv": {
       "path": "/bin/bash",
       "args": ["-l"]
     }
   },
-  "terminal.integrated.defaultProfile.linux": "bash-with-pyenv"
+  "terminal.integrated.defaultProfile.linux": "bash-with-pyenv",
+
+  // Limpieza
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  }
 }
+EOF
+
 
 EOF
 
