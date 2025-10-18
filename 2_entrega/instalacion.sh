@@ -589,19 +589,39 @@ mkdir -p "$VSCODE_DIR"
 
 cat > "$VSCODE_SETTINGS" << EOF
 {
-    "python.defaultInterpreterPath": "$VENV_DIR/bin/python",
-    "python.terminal.activateEnvironment": true,
-    "python.pythonPath": "$VENV_DIR/bin/python",
-    "python.analysis.extraPaths": [
-        "$MALMO_DIR/Python_Examples"
-    ],
-    "python.envFile": "\${workspaceFolder}/.env_vars",
-    "files.exclude": {
-        "**/__pycache__": true,
-        "**/.pytest_cache": true
-    },
-    "python.terminal.activateEnvInCurrentTerminal": true
+  "python.defaultInterpreterPath": "/home/carlos/.pyenv/versions/malmoenv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.pythonPath": "/home/carlos/.pyenv/versions/malmoenv/bin/python",
+  "python.analysis.extraPaths": [
+    "/home/carlos/MalmoPlatform/Malmo-0.37.0-Linux-Ubuntu-18.04-64bit_withBoost_Python3.6/Python_Examples"
+  ],
+  "python.envFile": "${workspaceFolder}/.env_vars",
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "python.terminal.activateEnvInCurrentTerminal": true,
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "python-envs.pythonProjects": [],
+
+  "code-runner.executorMap": {
+    "python": "/home/carlos/.pyenv/versions/malmoenv/bin/python"
+  },
+  "code-runner.runInTerminal": true,
+  "code-runner.fileDirectoryAsCwd": true,
+  "code-runner.saveFileBeforeRun": true,
+  "code-runner.clearPreviousOutput": true,
+  "code-runner.respectShebang": false,
+
+  "terminal.integrated.profiles.linux": {
+    "bash-with-pyenv": {
+      "path": "/bin/bash",
+      "args": ["-l"]
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "bash-with-pyenv"
 }
+
 EOF
 
 # Crear archivo de variables de entorno para VSCode
