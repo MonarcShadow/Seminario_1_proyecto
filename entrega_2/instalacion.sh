@@ -20,7 +20,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # Sin color
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   Instalación Cliente Python Malmo para WSL2         ║${NC}"
+echo -e "${GREEN}║   Instalación Cliente Python Malmo para WSL2          ║${NC}"
 echo -e "${GREEN}║   Modo Mirror Networking (localhost)                  ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -178,10 +178,10 @@ echo -e "${GREEN}✓ Dependencias instaladas${NC}"
 echo -e "${BLUE}[3/8]${NC} ${YELLOW}Verificando configuración de red...${NC}"
 
 echo -e "${CYAN}┌─────────────────────────────────────────────────┐${NC}"
-echo -e "${CYAN}│ Modo de Red: ${GREEN}WSL2 Mirror (localhost)${CYAN}          │${NC}"
-echo -e "${CYAN}│ Host Malmo:  ${GREEN}127.0.0.1${CYAN}                        │${NC}"
-echo -e "${CYAN}│ Puerto 1:    ${GREEN}$MALMO_PORT_PRIMARY${CYAN}                            │${NC}"
-echo -e "${CYAN}│ Puerto 2:    ${GREEN}$MALMO_PORT_SECONDARY${CYAN}                            │${NC}"
+echo -e "${CYAN}│ Modo de Red: ${GREEN}WSL2 Mirror (localhost)${CYAN}           │${NC}"
+echo -e "${CYAN}│ Host Malmo:  ${GREEN}127.0.0.1${CYAN}                         │${NC}"
+echo -e "${CYAN}│ Puerto 1:    ${GREEN}$MALMO_PORT_PRIMARY${CYAN}                             │${NC}"
+echo -e "${CYAN}│ Puerto 2:    ${GREEN}$MALMO_PORT_SECONDARY${CYAN}                             │${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────┘${NC}"
 
 # Verificar que localhost esté accesible
@@ -628,7 +628,7 @@ echo -e "${GREEN}✓ VSCode configurado${NC}"
 # =============================================================================
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║          ✓ Instalación Completada                    ║${NC}"
+echo -e "${GREEN}║          ✓ Instalación Completada                     ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${CYAN}═══════════════ Configuración de Red ═══════════════${NC}"
