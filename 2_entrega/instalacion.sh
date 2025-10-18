@@ -718,3 +718,54 @@ echo -e "  ${BLUE}$PROJECT_DIR/.env_info${NC}"
 echo -e "  ${BLUE}$PROJECT_DIR/README_MALMO.md${NC}"
 echo ""
 cp -r $PROJECT_DIR/.vscode/ ../
+
+# =============================================================================
+# Malmo Windows - Instalar en C:\ y crear acceso directo
+# =============================================================================
+
+echo -e "${BLUE}[9/9]${NC} ${YELLOW}Configurando Malmo para Windows (cliente Minecraft)...${NC}"
+
+WIN_MALMO_FOLDER="Malmo-0.37.0-Windows-64bit_withBoost_Python3.7"
+WIN_URL="https://github.com/microsoft/malmo/releases/download/0.37.0/Malmo-0.37.0-Windows-64bit_withBoost_Python3.7.zip"
+
+# Descargar y descomprimir en C:\MalmoPlatform
+WIN_BASE_DIR="/mnt/c/MalmoPlatform"
+WIN_MALMO_DIR="$WIN_BASE_DIR/$WIN_MALMO_FOLDER"
+WSL_TEMP_ZIP="$HOME/malmo_temp.zip"
+
+mkdir -p "$WIN_BASE_DIR"
+
+if [ ! -d "$WIN_MALMO_DIR" ]; then
+  echo -e "${CYAN}Descargando Malmo Windows: ${BLUE}$WIN_URL${NC}"
+  wget -q --show-progress -O "$WSL_TEMP_ZIP" "$WIN_URL"
+  
+  echo -e "${YELLOW}Descomprimiendo en C:\\MalmoPlatform...${NC}"
+  unzip -q "$WSL_TEMP_ZIP" -d "$WIN_BASE_DIR"
+  rm -f "$WSL_TEMP_ZIP"
+  
+  echo -e "${GREEN}✓ Malmo Windows instalado${NC}"
+else
+  echo -e "${GREEN}✓ Malmo Windows ya existe${NC}"
+fi
+
+# Crear acceso directo directo al launchClient.bat original
+WIN_DESKTOP="/mnt/c/Users/$WINDOWS_USER/Desktop"
+LNK_NAME="Minecraft Malmo.lnk"
+
+# Eliminar acceso directo antiguo si existe
+rm -f "$WIN_DESKTOP/$LNK_NAME"
+
+# Crear acceso directo al .bat original de Malmo
+/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoLogo -NoProfile -Command \
+  "\$s=(New-Object -ComObject WScript.Shell).CreateShortcut('C:\\Users\\$WINDOWS_USER\\Desktop\\$LNK_NAME');" \
+  "\$s.TargetPath='C:\\MalmoPlatform\\$WIN_MALMO_FOLDER\\Minecraft\\launchClient.bat';" \
+  "\$s.WorkingDirectory='C:\\MalmoPlatform\\$WIN_MALMO_FOLDER\\Minecraft';" \
+  "\$s.IconLocation='%SystemRoot%\\System32\\imageres.dll,14';" \
+  "\$s.Description='Minecraft con Malmo (puerto predeterminado 10000)';" \
+  "\$s.Save()" 2>/dev/null | tr -d '\r'
+
+echo -e "${GREEN}✓ Acceso directo creado en el Escritorio${NC}"
+echo -e "  ${BLUE}Ubicación:${NC}  C:\\MalmoPlatform\\$WIN_MALMO_FOLDER\\Minecraft"
+echo -e "  ${BLUE}Acceso:${NC}     $LNK_NAME"
+echo -e "  ${BLUE}Puerto:${NC}     Predeterminado (10000)"
+echo ""
