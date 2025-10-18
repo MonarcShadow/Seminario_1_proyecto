@@ -2,7 +2,7 @@
 
 # =============================================================================
 # Script de Instalación - Cliente Python Malmo para WSL2
-# Modo: WSL2 Mirror Networking (localhost 127.0.0.1)
+# Modo: WSL2 Mirror Networking (localhost)
 # Minecraft Server: Windows (Host) - Puerto 10000/10001
 # Python Client: Ubuntu WSL2 - Puerto 10000/10001
 # Comunicación: localhost (127.0.0.1) bidireccional
@@ -31,7 +31,15 @@ VENV_NAME="malmoenv"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_DIR/.env"
 ALIAS_NAME="malmoenv"
-MALMO_DIR="$PROJECT_DIR/entrega_2/malmo"
+
+# Malmo se instalará fuera del proyecto
+MALMO_BASE_DIR="$HOME/MalmoPlatform"
+MALMO_VERSION="0.37.0"
+MALMO_PLATFORM="Linux-Ubuntu-18.04-64bit_withBoost_Python3.6"
+MALMO_FOLDER="Malmo-${MALMO_VERSION}-${MALMO_PLATFORM}"
+MALMO_DIR="$MALMO_BASE_DIR/$MALMO_FOLDER"
+MALMO_DOWNLOAD_URL="https://github.com/microsoft/malmo/releases/download/${MALMO_VERSION}/${MALMO_FOLDER}.zip"
+
 MALMO_HOST="127.0.0.1"  # localhost en modo mirror
 MALMO_PORT_PRIMARY=10000
 MALMO_PORT_SECONDARY=10001
@@ -39,10 +47,9 @@ MALMO_PORT_SECONDARY=10001
 # =============================================================================
 # 0. Verificar configuración WSL2 Mirror Mode
 # =============================================================================
-echo -e "${BLUE}[0/7]${NC} ${YELLOW}Verificando configuración WSL2 Mirror Mode...${NC}"
+echo -e "${BLUE}[0/8]${NC} ${YELLOW}Verificando configuración WSL2 Mirror Mode...${NC}"
 
-# Obtener el nombre de usuario de Windows usando la ruta completa a powershell.exe
-# En WSL2, los ejecutables de Windows están en /mnt/c/Windows/System32/
+# Obtener el nombre de usuario de Windows usando la ruta completa
 WINDOWS_USER=$(/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -Command '$env:USERNAME' 2>/dev/null | tr -d '\r')
 
 # Si el método anterior falla, intentar con cmd.exe
@@ -53,15 +60,6 @@ fi
 # Si aún falla, intentar extraer de USERPROFILE
 if [ -z "$WINDOWS_USER" ]; then
     WINDOWS_USER=$(/mnt/c/Windows/System32/cmd.exe /c "echo %USERPROFILE%" 2>/dev/null | sed 's/.*\\//' | tr -d '\r')
-fi
-
-# Si todo falla, intentar con wslpath y la variable de entorno (requiere que esté configurada)
-if [ -z "$WINDOWS_USER" ] && command -v wslpath &> /dev/null; then
-    USERPROFILE_WIN=$(/mnt/c/Windows/System32/cmd.exe /c "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')
-    if [ -n "$USERPROFILE_WIN" ]; then
-        USERPROFILE_LINUX=$(wslpath "$USERPROFILE_WIN" 2>/dev/null)
-        WINDOWS_USER=$(basename "$USERPROFILE_LINUX")
-    fi
 fi
 
 # Verificar que obtuvimos el usuario
@@ -91,34 +89,7 @@ fi
 if [ "$WSL_MIRROR_CONFIGURED" = false ]; then
     echo -e "${YELLOW}⚠ WSL2 Mirror Mode NO está configurado${NC}"
     echo ""
-    echo -e "${CYAN}Para habilitar el modo mirror, crea/edita el archivo:${NC}"
-    echo -e "  ${MAGENTA}C:\\Users\\$WINDOWS_USER\\.wslconfig${NC}"
-    echo ""
-    echo -e "${CYAN}Puedes crearlo desde WSL con el siguiente comando:${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo -e "cat > \"$WSLCONFIG_PATH\" << 'WSLEOF'"
-    echo -e "[wsl2]"
-    echo -e "networkingMode=mirrored"
-    echo -e "dnsTunneling=true"
-    echo -e "firewall=true"
-    echo -e "autoProxy=true"
-    echo -e "WSLEOF"
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${CYAN}O en Windows (PowerShell), crea el archivo con:${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo -e '@"'
-    echo -e "[wsl2]"
-    echo -e "networkingMode=mirrored"
-    echo -e "dnsTunneling=true"
-    echo -e "firewall=true"
-    echo -e "autoProxy=true"
-    echo -e '"@ | Out-File -FilePath "$env:USERPROFILE\.wslconfig" -Encoding ASCII'
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${YELLOW}Después ejecuta en PowerShell (como Administrador):${NC}"
-    echo -e "  ${BLUE}wsl --shutdown${NC}"
-    echo -e "  ${BLUE}wsl${NC}"
+    echo -e "${CYAN}Para habilitar el modo mirror, puedes crearlo automáticamente o manualmente:${NC}"
     echo ""
     
     # Preguntar si desea crear el archivo automáticamente
@@ -133,24 +104,42 @@ dnsTunneling=true
 firewall=true
 autoProxy=true
 WSLEOF
-        echo -e "${GREEN}✓ Archivo .wslconfig creado exitosamente${NC}"
-        echo -e "${YELLOW}IMPORTANTE: Debes reiniciar WSL2 para que los cambios surtan efecto${NC}"
-        echo -e "${YELLOW}Ejecuta en PowerShell: ${BLUE}wsl --shutdown${NC} ${YELLOW}y luego abre WSL2 nuevamente${NC}"
+        echo -e "${GREEN}✓ Archivo .wslconfig creado exitosamente en:${NC}"
+        echo -e "  ${BLUE}C:\\Users\\$WINDOWS_USER\\.wslconfig${NC}"
         echo ""
-        read -p "$(echo -e ${CYAN}Presiona ENTER para continuar con la instalación...${NC})"
+        echo -e "${RED}═══════════════════════════════════════════════════${NC}"
+        echo -e "${RED}  IMPORTANTE: Debes reiniciar WSL2 ahora${NC}"
+        echo -e "${RED}═══════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}Ejecuta en PowerShell (como Administrador):${NC}"
+        echo -e "  ${BLUE}wsl --shutdown${NC}"
+        echo -e "${YELLOW}Luego abre WSL2 nuevamente y ejecuta este script otra vez.${NC}"
+        echo ""
+        exit 0
     else
+        echo ""
+        echo -e "${CYAN}Instrucciones manuales:${NC}"
+        echo -e "1. ${YELLOW}Crea el archivo:${NC} ${BLUE}C:\\Users\\$WINDOWS_USER\\.wslconfig${NC}"
+        echo -e "2. ${YELLOW}Con el siguiente contenido:${NC}"
+        echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+        echo -e "[wsl2]"
+        echo -e "networkingMode=mirrored"
+        echo -e "dnsTunneling=true"
+        echo -e "firewall=true"
+        echo -e "autoProxy=true"
+        echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+        echo -e "3. ${YELLOW}Reinicia WSL2 en PowerShell:${NC} ${BLUE}wsl --shutdown${NC}"
+        echo ""
         read -p "$(echo -e ${CYAN}Presiona ENTER para continuar con la instalación de todas formas...${NC})"
     fi
 fi
 
-
 # =============================================================================
 # 1. Actualizar sistema
 # =============================================================================
-echo -e "${BLUE}[1/7]${NC} ${YELLOW}Actualizando repositorios del sistema...${NC}"
+echo -e "${BLUE}[1/8]${NC} ${YELLOW}Actualizando repositorios del sistema...${NC}"
 sudo apt-get update -y
 
-echo -e "${BLUE}[1/7]${NC} ${YELLOW}Actualizando paquetes instalados...${NC}"
+echo -e "${BLUE}[1/8]${NC} ${YELLOW}Actualizando paquetes instalados...${NC}"
 sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
 echo -e "${GREEN}✓ Sistema actualizado${NC}"
@@ -158,10 +147,11 @@ echo -e "${GREEN}✓ Sistema actualizado${NC}"
 # =============================================================================
 # 2. Instalar dependencias para Python Client
 # =============================================================================
-echo -e "${BLUE}[2/7]${NC} ${YELLOW}Instalando dependencias para Python...${NC}"
+echo -e "${BLUE}[2/8]${NC} ${YELLOW}Instalando dependencias para Python...${NC}"
 sudo apt-get install -y \
     build-essential \
     wget \
+    unzip \
     git \
     curl \
     libssl-dev \
@@ -185,7 +175,7 @@ echo -e "${GREEN}✓ Dependencias instaladas${NC}"
 # =============================================================================
 # 3. Verificar conectividad localhost
 # =============================================================================
-echo -e "${BLUE}[3/7]${NC} ${YELLOW}Verificando configuración de red...${NC}"
+echo -e "${BLUE}[3/8]${NC} ${YELLOW}Verificando configuración de red...${NC}"
 
 echo -e "${CYAN}┌─────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│ Modo de Red: ${GREEN}WSL2 Mirror (localhost)${CYAN}          │${NC}"
@@ -205,7 +195,7 @@ fi
 # 4. Instalar pyenv
 # =============================================================================
 if [ ! -d "$HOME/.pyenv" ]; then
-    echo -e "${BLUE}[4/7]${NC} ${YELLOW}Instalando pyenv...${NC}"
+    echo -e "${BLUE}[4/8]${NC} ${YELLOW}Instalando pyenv...${NC}"
     curl https://pyenv.run | bash
     
     # Configurar pyenv en .bashrc
@@ -221,7 +211,7 @@ EOF
     fi
     echo -e "${GREEN}✓ pyenv instalado${NC}"
 else
-    echo -e "${BLUE}[4/7]${NC} ${GREEN}✓ pyenv ya está instalado${NC}"
+    echo -e "${BLUE}[4/8]${NC} ${GREEN}✓ pyenv ya está instalado${NC}"
 fi
 
 # Cargar pyenv en la sesión actual
@@ -233,7 +223,7 @@ eval "$(pyenv virtualenv-init -)"
 # =============================================================================
 # 5. Instalar Python 3.6.15 y crear entorno virtual
 # =============================================================================
-echo -e "${BLUE}[5/7]${NC} ${YELLOW}Instalando Python ${PYTHON_VERSION}...${NC}"
+echo -e "${BLUE}[5/8]${NC} ${YELLOW}Instalando Python ${PYTHON_VERSION}...${NC}"
 if ! pyenv versions | grep -q "$PYTHON_VERSION"; then
     pyenv install $PYTHON_VERSION
     echo -e "${GREEN}✓ Python ${PYTHON_VERSION} instalado${NC}"
@@ -255,62 +245,68 @@ pyenv activate $VENV_NAME
 echo -e "${GREEN}✓ Entorno virtual creado${NC}"
 
 # =============================================================================
-# 6. Instalar Malmo Python Client
+# 6. Descargar e instalar Malmo Prebuilt
 # =============================================================================
-echo -e "${BLUE}[6/7]${NC} ${YELLOW}Instalando Malmo Python Client...${NC}"
+echo -e "${BLUE}[6/8]${NC} ${YELLOW}Descargando Malmo prebuilt (fuera del proyecto)...${NC}"
+
+# Crear directorio para Malmo fuera del proyecto
+mkdir -p "$MALMO_BASE_DIR"
+
+if [ ! -d "$MALMO_DIR" ]; then
+    echo -e "${CYAN}Descargando Malmo ${MALMO_VERSION} para Ubuntu 18.04 con Python 3.6...${NC}"
+    echo -e "${CYAN}URL: ${BLUE}$MALMO_DOWNLOAD_URL${NC}"
+    echo -e "${CYAN}Destino: ${BLUE}$MALMO_BASE_DIR${NC}"
+    echo ""
+    
+    cd "$MALMO_BASE_DIR"
+    
+    # Descargar el archivo zip
+    wget -c "$MALMO_DOWNLOAD_URL" -O "${MALMO_FOLDER}.zip"
+    
+    # Descomprimir
+    echo -e "${YELLOW}Descomprimiendo...${NC}"
+    unzip -q "${MALMO_FOLDER}.zip"
+    
+    # Eliminar archivo zip
+    rm "${MALMO_FOLDER}.zip"
+    
+    cd "$PROJECT_DIR"
+    
+    echo -e "${GREEN}✓ Malmo descargado e instalado en: $MALMO_DIR${NC}"
+else
+    echo -e "${GREEN}✓ Malmo ya está instalado en: $MALMO_DIR${NC}"
+fi
+
+# Verificar que la estructura de Malmo sea correcta
+if [ ! -d "$MALMO_DIR/Python_Examples" ]; then
+    echo -e "${RED}✗ Error: Estructura de Malmo incorrecta en $MALMO_DIR${NC}"
+    echo -e "${YELLOW}Se esperaba encontrar: Python_Examples${NC}"
+    exit 1
+fi
+
+# =============================================================================
+# 7. Configurar Python para usar Malmo
+# =============================================================================
+echo -e "${BLUE}[7/8]${NC} ${YELLOW}Configurando Python para usar Malmo...${NC}"
 
 pip install --upgrade pip setuptools wheel
 
-# Instalar dependencias
-pip install numpy matplotlib pillow lxml future
+# Instalar dependencias básicas
+pip install numpy matplotlib pillow lxml future gym
 
-# Intentar instalar malmo con pip
-echo -e "${YELLOW}Intentando instalar Malmo con pip...${NC}"
-if pip install malmo 2>/dev/null; then
-    echo -e "${GREEN}✓ Malmo instalado con pip${NC}"
-    MALMO_INSTALLED_VIA_PIP=true
-else
-    echo -e "${YELLOW}⚠ Pip falló. Clonando repositorio Malmo...${NC}"
-    MALMO_INSTALLED_VIA_PIP=false
-    
-    # Clonar repositorio de Malmo
-    if [ ! -d "$MALMO_DIR/.git" ]; then
-        mkdir -p "$(dirname "$MALMO_DIR")"
-        git clone https://github.com/microsoft/malmo.git "$MALMO_DIR"
-    fi
-    
-    # Configurar MALMO_XSD_PATH
-    export MALMO_XSD_PATH=$MALMO_DIR/Schemas
-    
-    # Agregar MalmoEnv al Python path (recomendado para cliente sin código nativo)
-    if [ -d "$MALMO_DIR/MalmoEnv" ]; then
-        echo "$MALMO_DIR/MalmoEnv" > "$VENV_DIR/lib/python3.6/site-packages/malmoenv.pth"
-        
-        # Instalar MalmoEnv en modo editable
-        if [ -f "$MALMO_DIR/MalmoEnv/setup.py" ]; then
-            cd "$MALMO_DIR/MalmoEnv"
-            pip install -e .
-            cd "$PROJECT_DIR"
-        fi
-        
-        echo -e "${GREEN}✓ MalmoEnv instalado desde repositorio${NC}"
-    fi
-    
-    # Agregar Python samples al path
-    if [ -d "$MALMO_DIR/Malmo/samples/Python_examples" ]; then
-        echo "$MALMO_DIR/Malmo/samples/Python_examples" > "$VENV_DIR/lib/python3.6/site-packages/malmo_samples.pth"
-    fi
-fi
+# Agregar Malmo Python al path
+MALMO_PYTHON_PATH="$MALMO_DIR/Python_Examples"
+echo "$MALMO_PYTHON_PATH" > "$VENV_DIR/lib/python3.6/site-packages/malmo.pth"
 
-# Instalar gym para entornos de RL
-pip install gym
+# Configurar MALMO_XSD_PATH
+export MALMO_XSD_PATH="$MALMO_DIR/Schemas"
 
-echo -e "${GREEN}✓ Instalación de Malmo completada${NC}"
+echo -e "${GREEN}✓ Malmo configurado correctamente${NC}"
 
 # =============================================================================
-# 7. Configurar variables de entorno y alias
+# 8. Configurar variables de entorno y alias
 # =============================================================================
-echo -e "${BLUE}[7/7]${NC} ${YELLOW}Configurando entorno para localhost (mirror mode)...${NC}"
+echo -e "${BLUE}[8/8]${NC} ${YELLOW}Configurando entorno para localhost (mirror mode)...${NC}"
 
 # Agregar configuración a .bashrc
 if ! grep -q "MALMO_HOST" ~/.bashrc; then
@@ -320,13 +316,9 @@ if ! grep -q "MALMO_HOST" ~/.bashrc; then
 export MALMO_HOST="$MALMO_HOST"
 export MALMO_PORT_PRIMARY=$MALMO_PORT_PRIMARY
 export MALMO_PORT_SECONDARY=$MALMO_PORT_SECONDARY
+export MALMO_XSD_PATH="$MALMO_DIR/Schemas"
+export MALMO_DIR="$MALMO_DIR"
 EOF
-fi
-
-if [ "$MALMO_INSTALLED_VIA_PIP" = false ]; then
-    if ! grep -q "MALMO_XSD_PATH" ~/.bashrc; then
-        echo "export MALMO_XSD_PATH=$MALMO_DIR/Schemas" >> ~/.bashrc
-    fi
 fi
 
 # Configurar alias
@@ -334,7 +326,7 @@ if ! grep -q "alias $ALIAS_NAME=" ~/.bashrc; then
     cat >> ~/.bashrc << EOF
 
 # Alias para activar entorno Malmo
-alias $ALIAS_NAME='cd $PROJECT_DIR && pyenv activate $VENV_NAME && echo -e "\033[0;32m✓ Entorno Malmo activado\033[0m" && echo -e "\033[0;36mHost: \$MALMO_HOST (localhost)\033[0m" && echo -e "\033[0;36mPuertos: \$MALMO_PORT_PRIMARY, \$MALMO_PORT_SECONDARY\033[0m"'
+alias $ALIAS_NAME='pyenv activate $VENV_NAME && echo -e "\033[0;32m✓ Entorno Malmo activado\033[0m" && echo -e "\033[0;36mHost: \$MALMO_HOST (localhost)\033[0m" && echo -e "\033[0;36mPuertos: \$MALMO_PORT_PRIMARY, \$MALMO_PORT_SECONDARY\033[0m" && echo -e "\033[0;36mMalmo Dir: \$MALMO_DIR\033[0m"'
 EOF
     echo -e "${GREEN}✓ Alias '$ALIAS_NAME' configurado${NC}"
 fi
@@ -349,6 +341,12 @@ Conecta al servidor Minecraft en localhost (WSL2 Mirror Mode)
 """
 import os
 import socket
+import sys
+
+# Agregar ruta de Malmo
+malmo_dir = os.environ.get('MALMO_DIR', '')
+if malmo_dir:
+    sys.path.append(os.path.join(malmo_dir, 'Python_Examples'))
 
 def test_malmo_connection(host='127.0.0.1', ports=[10000, 10001]):
     print("═" * 60)
@@ -356,6 +354,7 @@ def test_malmo_connection(host='127.0.0.1', ports=[10000, 10001]):
     print("═" * 60)
     print(f"Host: {host} (localhost)")
     print(f"Puertos: {', '.join(map(str, ports))}")
+    print(f"Malmo Dir: {os.environ.get('MALMO_DIR', 'No configurado')}")
     print("-" * 60)
     
     results = []
@@ -375,6 +374,17 @@ def test_malmo_connection(host='127.0.0.1', ports=[10000, 10001]):
         except Exception as e:
             print(f"✗ Puerto {port}: Error - {e}")
             results.append(False)
+    
+    print("-" * 60)
+    
+    # Verificar que MalmoPython esté accesible
+    try:
+        import MalmoPython
+        print("✓ MalmoPython importado correctamente")
+        print(f"  Versión: {MalmoPython.__version__ if hasattr(MalmoPython, '__version__') else 'N/A'}")
+    except ImportError as e:
+        print(f"✗ No se pudo importar MalmoPython: {e}")
+        print("  Verifica que MALMO_DIR esté configurado correctamente")
     
     print("-" * 60)
     
@@ -399,78 +409,153 @@ if __name__ == "__main__":
 EOF
 chmod +x "$PROJECT_DIR/test_connection.py"
 
-# Crear ejemplo de conexión para scripts de Malmo
-cat > "$PROJECT_DIR/ejemplo_conexion.py" << 'EOF'
+# Crear ejemplo de conexión
+cat > "$PROJECT_DIR/ejemplo_malmo.py" << 'EOF'
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Ejemplo de conexión a Malmo en WSL2 Mirror Mode
-Usar en tus scripts de Malmo
+Ejemplo básico de uso de Malmo en WSL2 Mirror Mode
 """
 import os
+import sys
 
-# Configuración para WSL2 Mirror Mode
-MALMO_HOST = os.environ.get('MALMO_HOST', '127.0.0.1')
-MALMO_PORT = int(os.environ.get('MALMO_PORT_PRIMARY', 10000))
+# Configurar ruta de Malmo
+malmo_dir = os.environ.get('MALMO_DIR', '')
+if malmo_dir:
+    sys.path.append(os.path.join(malmo_dir, 'Python_Examples'))
 
-print(f"Conectando a Malmo en {MALMO_HOST}:{MALMO_PORT}")
-
-# Ejemplo de uso con MalmoEnv
 try:
-    import malmoenv
+    import MalmoPython
+    print("✓ MalmoPython importado correctamente")
     
-    env = malmoenv.make()
-    # La conexión se hace automáticamente a localhost
-    env.init(
-        '<MissionXML>...</MissionXML>',
-        port=MALMO_PORT,
-        server=MALMO_HOST,
-        server2=MALMO_HOST
-    )
-    print("✓ Conexión exitosa con MalmoEnv")
-except ImportError:
-    print("MalmoEnv no instalado, usando MalmoPython...")
+    # Configuración para WSL2 Mirror Mode
+    MALMO_HOST = os.environ.get('MALMO_HOST', '127.0.0.1')
+    MALMO_PORT = int(os.environ.get('MALMO_PORT_PRIMARY', 10000))
     
-    # Ejemplo con MalmoPython (si usas el repositorio clonado)
-    try:
-        import MalmoPython
-        
-        agent_host = MalmoPython.AgentHost()
-        client_info = MalmoPython.ClientInfo(MALMO_HOST, MALMO_PORT)
-        print(f"✓ ClientInfo configurado para {MALMO_HOST}:{MALMO_PORT}")
-    except ImportError:
-        print("✗ No se encontró MalmoPython. Verifica la instalación.")
-
-print("\nUsa siempre:")
-print(f"  Host: {MALMO_HOST}")
-print(f"  Puerto: {MALMO_PORT}")
+    print(f"\nConfiguración:")
+    print(f"  Host: {MALMO_HOST}")
+    print(f"  Puerto: {MALMO_PORT}")
+    print(f"  Malmo Dir: {malmo_dir}")
+    
+    # Crear AgentHost
+    agent_host = MalmoPython.AgentHost()
+    print("\n✓ AgentHost creado exitosamente")
+    
+    # Ejemplo de ClientInfo para conexión localhost
+    client_pool = MalmoPython.ClientPool()
+    client_pool.add(MalmoPython.ClientInfo(MALMO_HOST, MALMO_PORT))
+    
+    print(f"✓ ClientPool configurado para {MALMO_HOST}:{MALMO_PORT}")
+    print("\nAhora puedes usar agent_host.startMission() con tu misión XML")
+    
+except ImportError as e:
+    print(f"✗ Error al importar MalmoPython: {e}")
+    print("\nVerifica que:")
+    print("  1. El entorno 'malmoenv' esté activado")
+    print("  2. MALMO_DIR esté configurado (ejecuta: echo $MALMO_DIR)")
+    print("  3. Malmo esté instalado en: ~/MalmoPlatform/")
+except Exception as e:
+    print(f"✗ Error: {e}")
 EOF
-chmod +x "$PROJECT_DIR/ejemplo_conexion.py"
+chmod +x "$PROJECT_DIR/ejemplo_malmo.py"
 
-# Crear archivo README para configuración
-cat > "$PROJECT_DIR/README_MIRROR_MODE.md" << EOF
-# Configuración WSL2 Mirror Mode para Malmo
+# Crear README
+cat > "$PROJECT_DIR/README_MALMO.md" << EOF
+# Configuración Malmo para WSL2 Mirror Mode
 
-## ¿Qué es Mirror Mode?
-
-Mirror Mode es una característica de WSL2 que permite que Windows y WSL2 compartan la misma interfaz de red, permitiendo comunicación bidireccional usando \`localhost\` (127.0.0.1).
-
-## Requisitos
-
-- Windows 11 22H2 o superior
-- WSL 2 versión 2.0.4 o superior
-
-## Configuración
-
-### 1. Habilitar Mirror Mode en WSL2
-
-Crea o edita el archivo \`.wslconfig\` en Windows:
+## Estructura de Directorios
 
 \`\`\`
-C:\\Users\\$USER\\.wslconfig
+$HOME/
+├── MalmoPlatform/                    # Malmo instalado fuera del proyecto
+│   └── $MALMO_FOLDER/
+│       ├── Python_Examples/
+│       ├── Schemas/
+│       ├── Minecraft/
+│       └── ...
+│
+└── $(basename $(dirname $PROJECT_DIR))/
+    └── $(basename $PROJECT_DIR)/    # Tu proyecto (repositorio git)
+        ├── .env/                     # Entorno virtual Python
+        ├── test_connection.py
+        ├── ejemplo_malmo.py
+        └── README_MALMO.md
 \`\`\`
 
-Contenido:
+## Instalación de Malmo
+
+Malmo ${MALMO_VERSION} ha sido instalado en:
+\`\`\`
+$MALMO_DIR
+\`\`\`
+
+Esta ubicación está **fuera de tu repositorio** para evitar incluir archivos grandes en git.
+
+## Variables de Entorno
+
+Las siguientes variables están configuradas automáticamente:
+
+- \`MALMO_HOST\`: $MALMO_HOST (localhost)
+- \`MALMO_PORT_PRIMARY\`: $MALMO_PORT_PRIMARY
+- \`MALMO_PORT_SECONDARY\`: $MALMO_PORT_SECONDARY
+- \`MALMO_DIR\`: $MALMO_DIR
+- \`MALMO_XSD_PATH\`: $MALMO_DIR/Schemas
+
+## Uso
+
+### 1. Activar entorno virtual
+
+Desde cualquier directorio:
+\`\`\`bash
+$ALIAS_NAME
+\`\`\`
+
+### 2. En Windows: Iniciar Minecraft con Malmo
+
+Descarga Malmo para Windows:
+https://github.com/microsoft/malmo/releases/download/${MALMO_VERSION}/Malmo-${MALMO_VERSION}-Windows-64bit_withBoost_Python3.6.zip
+
+Luego ejecuta:
+\`\`\`cmd
+launchClient.bat -port $MALMO_PORT_PRIMARY
+\`\`\`
+
+### 3. Probar conexión
+
+\`\`\`bash
+python test_connection.py
+\`\`\`
+
+### 4. Ejemplo de código
+
+\`\`\`bash
+python ejemplo_malmo.py
+\`\`\`
+
+## En tus scripts de Python
+
+\`\`\`python
+import os
+import sys
+
+# Agregar Malmo al path
+malmo_dir = os.environ.get('MALMO_DIR')
+sys.path.append(os.path.join(malmo_dir, 'Python_Examples'))
+
+import MalmoPython
+
+# Configuración para localhost (Mirror Mode)
+MALMO_HOST = '127.0.0.1'
+MALMO_PORT = 10000
+
+# Crear cliente
+agent_host = MalmoPython.AgentHost()
+client_info = MalmoPython.ClientInfo(MALMO_HOST, MALMO_PORT)
+\`\`\`
+
+## WSL2 Mirror Mode
+
+Archivo de configuración: \`C:\\Users\\$WINDOWS_USER\\.wslconfig\`
 
 \`\`\`ini
 [wsl2]
@@ -480,71 +565,22 @@ firewall=true
 autoProxy=true
 \`\`\`
 
-### 2. Reiniciar WSL2
-
-En PowerShell (como Administrador):
-
+Después de modificar .wslconfig, reinicia WSL2:
 \`\`\`powershell
 wsl --shutdown
 wsl
 \`\`\`
 
-### 3. Configurar Firewall de Windows (Opcional)
-
-Si tienes problemas de conexión, ejecuta en PowerShell (Admin):
-
-\`\`\`powershell
-Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
-\`\`\`
-
-O para puertos específicos:
-
-\`\`\`powershell
-New-NetFirewallHyperVRule -Name "Malmo" -DisplayName "Malmo Minecraft" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 10000,10001
-\`\`\`
-
-## Uso con Malmo
-
-### En Windows (Minecraft Server)
-
-1. Descarga Malmo para Windows
-2. Ejecuta: \`launchClient.bat -port 10000\`
-
-### En WSL2 (Python Client)
-
-En tus scripts de Python, usa:
-
-\`\`\`python
-MALMO_HOST = "127.0.0.1"  # localhost
-MALMO_PORT = 10000
-\`\`\`
-
-### Prueba de Conexión
+## Verificar instalación
 
 \`\`\`bash
-python test_connection.py
+echo \$MALMO_DIR
+ls \$MALMO_DIR/Python_Examples/
+python -c "import sys; sys.path.append(os.path.join(os.environ['MALMO_DIR'], 'Python_Examples')); import MalmoPython; print('OK')"
 \`\`\`
-
-## Beneficios del Mirror Mode
-
-✓ Comunicación bidireccional simple con localhost
-✓ No necesitas conocer la IP de Windows
-✓ Soporte para IPv6
-✓ Mejor compatibilidad con VPNs
-✓ Conexión desde LAN
-
-## Verificar Configuración
-
-Para verificar que Mirror Mode está activo:
-
-\`\`\`bash
-ip addr show
-\`\`\`
-
-Deberías ver las mismas interfaces de red que en Windows.
 
 ---
-Generado por instalacion.sh
+Generado por instalacion.sh - $(date)
 EOF
 
 # Configurar VSCode
@@ -558,8 +594,7 @@ cat > "$VSCODE_SETTINGS" << EOF
     "python.terminal.activateEnvironment": true,
     "python.pythonPath": "$VENV_DIR/bin/python",
     "python.analysis.extraPaths": [
-        "$MALMO_DIR/MalmoEnv",
-        "$MALMO_DIR/Malmo/samples/Python_examples"
+        "$MALMO_DIR/Python_Examples"
     ],
     "python.envFile": "\${workspaceFolder}/.env_vars",
     "files.exclude": {
@@ -575,8 +610,16 @@ cat > "$PROJECT_DIR/.env_vars" << EOF
 MALMO_HOST=$MALMO_HOST
 MALMO_PORT_PRIMARY=$MALMO_PORT_PRIMARY
 MALMO_PORT_SECONDARY=$MALMO_PORT_SECONDARY
+MALMO_DIR=$MALMO_DIR
 MALMO_XSD_PATH=$MALMO_DIR/Schemas
 EOF
+
+# Agregar .env_vars al .gitignore si existe
+if [ -f "$PROJECT_DIR/.gitignore" ]; then
+    if ! grep -q ".env_vars" "$PROJECT_DIR/.gitignore"; then
+        echo ".env_vars" >> "$PROJECT_DIR/.gitignore"
+    fi
+fi
 
 echo -e "${GREEN}✓ VSCode configurado${NC}"
 
@@ -599,67 +642,56 @@ echo -e "${CYAN}═══════════════ Entorno Python ═
 echo -e "  ${BLUE}Python:${NC}            $(python --version 2>&1)"
 echo -e "  ${BLUE}Entorno virtual:${NC}   $VENV_DIR"
 echo -e "  ${BLUE}Proyecto:${NC}          $PROJECT_DIR"
-if [ "$MALMO_INSTALLED_VIA_PIP" = false ]; then
-    echo -e "  ${BLUE}Malmo:${NC}             $MALMO_DIR"
-fi
+echo ""
+echo -e "${CYAN}═══════════════ Malmo Platform ═══════════════════${NC}"
+echo -e "  ${BLUE}Versión:${NC}           $MALMO_VERSION"
+echo -e "  ${BLUE}Ubicación:${NC}         $MALMO_DIR"
+echo -e "  ${BLUE}Python Examples:${NC}   $MALMO_DIR/Python_Examples"
+echo -e "  ${BLUE}Schemas:${NC}           $MALMO_DIR/Schemas"
 echo ""
 echo -e "${YELLOW}═══════════════════ Próximos Pasos ════════════════════${NC}"
 
 if [ "$WSL_MIRROR_CONFIGURED" = false ]; then
-    echo -e "  ${RED}⚠ IMPORTANTE: Configura WSL2 Mirror Mode${NC}"
-    echo -e ""
-    echo -e "  ${GREEN}1.${NC} ${CYAN}Crea/edita en Windows:${NC}"
-    echo -e "     ${BLUE}C:\\Users\\$USER\\.wslconfig${NC}"
-    echo -e ""
-    echo -e "     ${YELLOW}Contenido:${NC}"
-    echo -e "     ${BLUE}[wsl2]${NC}"
-    echo -e "     ${BLUE}networkingMode=mirrored${NC}"
-    echo -e ""
-    echo -e "  ${GREEN}2.${NC} ${CYAN}Reinicia WSL2 en PowerShell (Admin):${NC}"
-    echo -e "     ${BLUE}wsl --shutdown${NC}"
-    echo -e "     ${BLUE}wsl${NC}"
-    echo -e ""
-    echo -e "  ${GREEN}3.${NC} ${CYAN}Continúa con los siguientes pasos${NC}"
+    echo -e "  ${RED}⚠ IMPORTANTE: Configura WSL2 Mirror Mode primero${NC}"
+    echo -e "     Ver instrucciones arriba o en README_MALMO.md"
     echo ""
 fi
 
-echo -e "  ${GREEN}A.${NC} ${CYAN}En Windows: Iniciar Minecraft con Malmo${NC}"
+echo -e "  ${GREEN}1.${NC} ${CYAN}Reinicia tu terminal o ejecuta:${NC}"
+echo -e "     ${BLUE}source ~/.bashrc${NC}"
+echo ""
+echo -e "  ${GREEN}2.${NC} ${CYAN}Activar el entorno:${NC}"
+echo -e "     ${BLUE}$ALIAS_NAME${NC}"
+echo ""
+echo -e "  ${GREEN}3.${NC} ${CYAN}En Windows: Descargar e iniciar Minecraft con Malmo${NC}"
 echo -e "     Descarga: ${BLUE}https://github.com/microsoft/malmo/releases${NC}"
 echo -e "     Ejecuta: ${BLUE}launchClient.bat -port $MALMO_PORT_PRIMARY${NC}"
 echo ""
-echo -e "  ${GREEN}B.${NC} ${CYAN}En WSL2: Reinicia terminal o ejecuta:${NC}"
-echo -e "     ${BLUE}source ~/.bashrc${NC}"
-echo ""
-echo -e "  ${GREEN}C.${NC} ${CYAN}Activar el entorno:${NC}"
-echo -e "     ${BLUE}malmoenv${NC}"
-echo ""
-echo -e "  ${GREEN}D.${NC} ${CYAN}Probar la conexión:${NC}"
+echo -e "  ${GREEN}4.${NC} ${CYAN}Probar la conexión:${NC}"
 echo -e "     ${BLUE}python test_connection.py${NC}"
 echo ""
-echo -e "  ${GREEN}E.${NC} ${CYAN}Ver ejemplo de uso:${NC}"
-echo -e "     ${BLUE}python ejemplo_conexion.py${NC}"
-echo -e "     ${BLUE}cat README_MIRROR_MODE.md${NC}"
+echo -e "  ${GREEN}5.${NC} ${CYAN}Ver ejemplo de uso:${NC}"
+echo -e "     ${BLUE}python ejemplo_malmo.py${NC}"
+echo -e "     ${BLUE}cat README_MALMO.md${NC}"
 echo ""
-echo -e "${YELLOW}═══════════════════ Configuración en Scripts ═══════════════${NC}"
-echo -e "  ${CYAN}En tus scripts de Python, usa siempre:${NC}"
-echo -e "     ${BLUE}MALMO_HOST = '127.0.0.1'  # localhost${NC}"
-echo -e "     ${BLUE}MALMO_PORT = 10000  # o 10001${NC}"
-echo ""
-echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+echo -e "${YELLOW}════════════════════════════════════════════════════════${NC}"
 
 # Guardar información del entorno
 cat > "$PROJECT_DIR/.env_info" << EOF
 PYTHON_VERSION=$PYTHON_VERSION
 VENV_NAME=$VENV_NAME
 VENV_DIR=$VENV_DIR
+MALMO_VERSION=$MALMO_VERSION
 MALMO_DIR=$MALMO_DIR
 MALMO_HOST=$MALMO_HOST
 MALMO_PORT_PRIMARY=$MALMO_PORT_PRIMARY
 MALMO_PORT_SECONDARY=$MALMO_PORT_SECONDARY
 WSL_MIRROR_CONFIGURED=$WSL_MIRROR_CONFIGURED
+WINDOWS_USER=$WINDOWS_USER
 INSTALACION_FECHA=$(date)
-MALMO_INSTALLED_VIA_PIP=$MALMO_INSTALLED_VIA_PIP
 EOF
 
-echo -e "${GREEN}✓ Información guardada en $PROJECT_DIR/.env_info${NC}"
+echo -e "${GREEN}✓ Información guardada en:${NC}"
+echo -e "  ${BLUE}$PROJECT_DIR/.env_info${NC}"
+echo -e "  ${BLUE}$PROJECT_DIR/README_MALMO.md${NC}"
 echo ""
