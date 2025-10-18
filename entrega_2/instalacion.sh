@@ -41,7 +41,7 @@ MALMO_PORT_SECONDARY=10001
 # =============================================================================
 echo -e "${BLUE}[0/7]${NC} ${YELLOW}Verificando configuración WSL2 Mirror Mode...${NC}"
 
-WSLCONFIG_PATH="/mnt/c/Users/$USER/.wslconfig"
+WSLCONFIG_PATH=$(wslpath "$(cmd.exe /C "echo %UserProfile%" 2>/dev/null | tr -d '\r')")/.wslconfig
 WSL_MIRROR_CONFIGURED=false
 
 # Verificar si .wslconfig existe en Windows
