@@ -41,37 +41,108 @@ MALMO_PORT_SECONDARY=10001
 # =============================================================================
 echo -e "${BLUE}[0/7]${NC} ${YELLOW}Verificando configuración WSL2 Mirror Mode...${NC}"
 
-WSLCONFIG_PATH=$(wslpath "$(cmd.exe /C "echo %UserProfile%" 2>/dev/null | tr -d '\r')")/.wslconfig
+# Obtener el nombre de usuario de Windows usando la ruta completa a powershell.exe
+# En WSL2, los ejecutables de Windows están en /mnt/c/Windows/System32/
+WINDOWS_USER=$(/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -Command '$env:USERNAME' 2>/dev/null | tr -d '\r')
+
+# Si el método anterior falla, intentar con cmd.exe
+if [ -z "$WINDOWS_USER" ]; then
+    WINDOWS_USER=$(/mnt/c/Windows/System32/cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r')
+fi
+
+# Si aún falla, intentar extraer de USERPROFILE
+if [ -z "$WINDOWS_USER" ]; then
+    WINDOWS_USER=$(/mnt/c/Windows/System32/cmd.exe /c "echo %USERPROFILE%" 2>/dev/null | sed 's/.*\\//' | tr -d '\r')
+fi
+
+# Si todo falla, intentar con wslpath y la variable de entorno (requiere que esté configurada)
+if [ -z "$WINDOWS_USER" ] && command -v wslpath &> /dev/null; then
+    USERPROFILE_WIN=$(/mnt/c/Windows/System32/cmd.exe /c "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')
+    if [ -n "$USERPROFILE_WIN" ]; then
+        USERPROFILE_LINUX=$(wslpath "$USERPROFILE_WIN" 2>/dev/null)
+        WINDOWS_USER=$(basename "$USERPROFILE_LINUX")
+    fi
+fi
+
+# Verificar que obtuvimos el usuario
+if [ -z "$WINDOWS_USER" ]; then
+    echo -e "${RED}✗ No se pudo detectar el usuario de Windows automáticamente${NC}"
+    read -p "$(echo -e ${CYAN}Ingresa tu nombre de usuario de Windows: ${NC})" WINDOWS_USER
+fi
+
+# Ruta al archivo .wslconfig en Windows
+WSLCONFIG_PATH="/mnt/c/Users/$WINDOWS_USER/.wslconfig"
 WSL_MIRROR_CONFIGURED=false
+
+echo -e "${CYAN}Usuario de Windows detectado: ${GREEN}$WINDOWS_USER${NC}"
 
 # Verificar si .wslconfig existe en Windows
 if [ -f "$WSLCONFIG_PATH" ]; then
-    if grep -q "networkingMode=mirrored" "$WSLCONFIG_PATH" 2>/dev/null; then
+    if grep -qi "networkingMode=mirrored" "$WSLCONFIG_PATH" 2>/dev/null; then
         WSL_MIRROR_CONFIGURED=true
         echo -e "${GREEN}✓ WSL2 Mirror Mode está configurado${NC}"
+    else
+        echo -e "${YELLOW}⚠ Archivo .wslconfig existe pero Mirror Mode no está habilitado${NC}"
     fi
+else
+    echo -e "${YELLOW}⚠ Archivo .wslconfig no encontrado en: $WSLCONFIG_PATH${NC}"
 fi
 
 if [ "$WSL_MIRROR_CONFIGURED" = false ]; then
     echo -e "${YELLOW}⚠ WSL2 Mirror Mode NO está configurado${NC}"
-    echo -e "${CYAN}Para habilitar el modo mirror, crea/edita el archivo:${NC}"
-    echo -e "  ${MAGENTA}C:\\Users\\$USER\\.wslconfig${NC}"
     echo ""
-    echo -e "${CYAN}Y agrega el siguiente contenido:${NC}"
+    echo -e "${CYAN}Para habilitar el modo mirror, crea/edita el archivo:${NC}"
+    echo -e "  ${MAGENTA}C:\\Users\\$WINDOWS_USER\\.wslconfig${NC}"
+    echo ""
+    echo -e "${CYAN}Puedes crearlo desde WSL con el siguiente comando:${NC}"
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo -e "cat > \"$WSLCONFIG_PATH\" << 'WSLEOF'"
     echo -e "[wsl2]"
     echo -e "networkingMode=mirrored"
     echo -e "dnsTunneling=true"
     echo -e "firewall=true"
     echo -e "autoProxy=true"
+    echo -e "WSLEOF"
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${CYAN}O en Windows (PowerShell), crea el archivo con:${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo -e '@"'
+    echo -e "[wsl2]"
+    echo -e "networkingMode=mirrored"
+    echo -e "dnsTunneling=true"
+    echo -e "firewall=true"
+    echo -e "autoProxy=true"
+    echo -e '"@ | Out-File -FilePath "$env:USERPROFILE\.wslconfig" -Encoding ASCII'
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "${YELLOW}Después ejecuta en PowerShell (como Administrador):${NC}"
     echo -e "  ${BLUE}wsl --shutdown${NC}"
     echo -e "  ${BLUE}wsl${NC}"
     echo ""
-    read -p "$(echo -e ${CYAN}Presiona ENTER para continuar con la instalación...${NC})"
+    
+    # Preguntar si desea crear el archivo automáticamente
+    read -p "$(echo -e ${CYAN}¿Deseas crear el archivo .wslconfig automáticamente ahora? [s/N]: ${NC})" CREATE_WSLCONFIG
+    
+    if [[ "$CREATE_WSLCONFIG" =~ ^[Ss]$ ]]; then
+        mkdir -p "/mnt/c/Users/$WINDOWS_USER"
+        cat > "$WSLCONFIG_PATH" << 'WSLEOF'
+[wsl2]
+networkingMode=mirrored
+dnsTunneling=true
+firewall=true
+autoProxy=true
+WSLEOF
+        echo -e "${GREEN}✓ Archivo .wslconfig creado exitosamente${NC}"
+        echo -e "${YELLOW}IMPORTANTE: Debes reiniciar WSL2 para que los cambios surtan efecto${NC}"
+        echo -e "${YELLOW}Ejecuta en PowerShell: ${BLUE}wsl --shutdown${NC} ${YELLOW}y luego abre WSL2 nuevamente${NC}"
+        echo ""
+        read -p "$(echo -e ${CYAN}Presiona ENTER para continuar con la instalación...${NC})"
+    else
+        read -p "$(echo -e ${CYAN}Presiona ENTER para continuar con la instalación de todas formas...${NC})"
+    fi
 fi
+
 
 # =============================================================================
 # 1. Actualizar sistema
