@@ -1,4 +1,29 @@
-Proyecto seminario 1 2025-2
+Proyecto Seminario 1 2025-2
+Segunda Entrega
+0. Instrucciones de instalación y ejecución
+
+Para configurar el entorno de trabajo de esta entrega, se deben seguir los siguientes pasos en una terminal de Ubuntu LTS (22.04 o superior):
+
+# 1️⃣ Ir al directorio principal del usuario
+cd ~/
+
+# 2️⃣ Clonar el repositorio desde GitHub
+git clone https://github.com/MonarcShadow/Seminario_1_proyecto.git
+
+# 3️⃣ Entrar en la carpeta de la segunda entrega
+cd Seminario_1_proyecto/2_entrega/
+
+# 4️⃣ Dar permiso de ejecución al script de instalación
+chmod +x instalacion.sh
+
+# 5️⃣ Ejecutar el script
+./instalacion.sh
+
+
+Una vez finalizada la instalación, se puede abrir el proyecto con Visual Studio Code mediante:
+
+code .
+
 
 # 1. ¿Qué ambiente va a elegir? ¿Es suficientemente complejo para el proyecto complejo?
 
