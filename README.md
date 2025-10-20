@@ -1,9 +1,14 @@
-Proyecto Seminario 1 2025-2
-Segunda Entrega
-0. Instrucciones de instalación y ejecución
+# Proyecto Seminario 1 - 2025-2  
+## Segunda Entrega
 
-Para configurar el entorno de trabajo de esta entrega, se deben seguir los siguientes pasos en una terminal de Ubuntu LTS (22.04 o superior):
+---
 
+### 🧩 0. Instrucciones de instalación y ejecución
+
+Para configurar el entorno de trabajo de esta entrega se puede utilizar , **Windows** (mediante WSL o una máquina virtual Linux Ubuntu LTS (22.04 o superior) ) o **directamente en un sistema Linux nativo**.
+
+
+```bash
 # 1️⃣ Ir al directorio principal del usuario
 cd ~/
 
@@ -19,11 +24,12 @@ chmod +x instalacion.sh
 # 5️⃣ Ejecutar el script
 ./instalacion.sh
 
+````
+Una vez finalizada la instalación, se puede abrir el proyecto en Visual Studio Code mediante:
 
-Una vez finalizada la instalación, se puede abrir el proyecto con Visual Studio Code mediante:
-
+```bash
 code .
-
+````
 
 # 1. ¿Qué ambiente va a elegir? ¿Es suficientemente complejo para el proyecto complejo?
 
