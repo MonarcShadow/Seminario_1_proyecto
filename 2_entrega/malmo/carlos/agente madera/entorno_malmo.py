@@ -35,6 +35,10 @@ class EntornoMalmo:
         self.historial_acciones = []  # Últimas N acciones
         self.pasos_sin_movimiento = 0  # Contador de pasos sin cambio de posición
         
+        # Contador de holgazanería (tiempo cerca de madera sin intentar picar)
+        self.pasos_cerca_madera_sin_picar = 0
+        self.madera_detectada_previamente = False
+        
     def calcular_recompensa(self, obs, accion, recompensa_malmo=0.0):
         """
         Sistema de recompensas diseñado para guiar al agente a encontrar y recolectar madera
@@ -72,10 +76,10 @@ class EntornoMalmo:
         inventario = obs.get("inventory", [])
         madera_actual = 0
         
-        TIPOS_MADERA = ["log", "log2", "planks"]
         for item in inventario:
-            item_type = item.get("type", "")
-            if any(madera in item_type for madera in TIPOS_MADERA):
+            item_type = item.get("type", "").lower()
+            # Contar cualquier tipo de madera (log, log2, planks, oak_wood, etc.)
+            if ("log" in item_type or "wood" in item_type or "plank" in item_type):
                 madera_actual += item.get("quantity", 0)
         
         # ¡ÉXITO! Incrementó madera en inventario
@@ -141,16 +145,42 @@ class EntornoMalmo:
         
         self.madera_previa = madera_en_grid
         
+        # 3.5. PENALIZAR HOLGAZANERÍA: Estar cerca de madera/hojas sin intentar picar
+        # Si detecta madera o muchas hojas pero no está picando, es holgazanería
+        tiene_arbol_cerca = (madera_en_grid > 0 or hojas_en_grid > 3)
+        
+        if tiene_arbol_cerca:
+            self.madera_detectada_previamente = True
+            if "attack" not in accion:
+                # Está cerca de madera pero NO está picando
+                self.pasos_cerca_madera_sin_picar += 1
+                
+                # Penalización progresiva por holgazanear
+                if self.pasos_cerca_madera_sin_picar > 8:
+                    penalizacion = -5.0 * (self.pasos_cerca_madera_sin_picar - 8)
+                    recompensa += penalizacion
+                    print(f"   😴 ¡HOLGAZANEANDO! {self.pasos_cerca_madera_sin_picar} pasos cerca sin picar ({penalizacion:.1f})")
+            else:
+                # Está picando, resetear contador
+                self.pasos_cerca_madera_sin_picar = 0
+        else:
+            # No hay madera cerca, resetear
+            self.pasos_cerca_madera_sin_picar = 0
+            self.madera_detectada_previamente = False
+        
         # 4. RECOMPENSAR/PENALIZAR ACCIÓN DE PICAR
         if "attack" in accion:
-            # Verificar si está mirando madera
+            # Verificar si está mirando madera o hojas
             line_of_sight = obs.get("LineOfSight", {})
             mirando_madera = False
+            mirando_hojas = False
             
             if isinstance(line_of_sight, dict):
                 tipo_bloque = line_of_sight.get("type", "")
                 if any(madera in tipo_bloque for madera in TIPOS_MADERA_BLOQUES):
                     mirando_madera = True
+                elif any(hoja in tipo_bloque for hoja in TIPOS_HOJAS):
+                    mirando_hojas = True
             
             if mirando_madera:
                 # ¡Bien! Está picando madera
@@ -158,6 +188,12 @@ class EntornoMalmo:
                 self.picando_actualmente = True
                 self.pasos_picando += 1
                 print(f"   🪓 Picando madera (paso {self.pasos_picando}) (+30)")
+            elif mirando_hojas:
+                # Bien, está despejando hojas para acceder al tronco
+                recompensa += 1.0
+                self.picando_actualmente = False
+                self.pasos_picando = 0
+                print(f"   🍃 Despejando hojas (+1)")
             else:
                 # Mal, está picando aire o bloque incorrecto
                 recompensa -= 10.0
@@ -356,18 +392,29 @@ class EntornoMalmo:
         total_logs = 0
         total_planks = 0
         
+        # Debug: mostrar todos los items del inventario
+        if len(inventario) > 0:
+            print(f"🎒 Inventario actual:")
+            for item in inventario:
+                item_type = item.get("type", "")
+                cantidad = item.get("quantity", 0)
+                print(f"   - {item_type}: {cantidad}")
+        
         for item in inventario:
-            item_type = item.get("type", "")
+            item_type = item.get("type", "").lower()  # Convertir a minúsculas para comparar
             cantidad = item.get("quantity", 0)
             
-            if "log" in item_type:  # log o log2
-                total_logs += cantidad
-            elif "planks" in item_type:
+            # Buscar cualquier tipo de tronco (log, log2, oak_wood, etc.)
+            if "log" in item_type or "wood" in item_type:
+                # Pero no contar planks/tablas como logs
+                if "plank" not in item_type:
+                    total_logs += cantidad
+            elif "plank" in item_type:
                 total_planks += cantidad
         
         # Verificar si alcanzó el objetivo
         if total_logs >= 2:
-            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_logs} bloques de madera (log)")
+            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_logs} bloques de madera")
             return True
         elif total_planks >= 8:
             print(f"🎉 ¡OBJETIVO ALCANZADO! {total_planks} tablas (planks)")
@@ -391,3 +438,6 @@ class EntornoMalmo:
         self.pasos_sin_movimiento = 0
         self.picando_actualmente = False
         self.pasos_picando = 0
+        # Resetear contadores de holgazanería
+        self.pasos_cerca_madera_sin_picar = 0
+        self.madera_detectada_previamente = False

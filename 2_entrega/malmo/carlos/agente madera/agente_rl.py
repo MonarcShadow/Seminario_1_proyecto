@@ -158,8 +158,9 @@ class AgenteQLearning:
         inventario = obs.get("inventory", [])
         tiene_madera = 0
         for item in inventario:
-            item_type = item.get("type", "")
-            if any(madera in item_type for madera in TIPOS_MADERA):
+            item_type = item.get("type", "").lower()
+            # Detectar log, log2, planks, oak_wood, etc.
+            if "log" in item_type or "wood" in item_type or "plank" in item_type:
                 tiene_madera = 1
                 break
         
