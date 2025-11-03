@@ -239,23 +239,22 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
                     print(f"   ⚠️ SISTEMA ANTI-STUCK: Saltando hacia adelante...")
                 entorno.pasos_sin_movimiento = 0  # Resetear después de secuencia
         
-        # 2.6 HEURÍSTICA: Si ve madera enfrente, picar (solo si no está en anti-stuck)
-        # Esto ayuda al agente a aprender más rápido
+        # 2.6 HEURÍSTICA: Si ve madera enfrente Y YA ESTÁ PICANDO, continuar (solo si no está en anti-stuck)
+        # IMPORTANTE: Solo aplicar si el agente YA eligió attack, no forzar attack en otras acciones
         if entorno.pasos_sin_movimiento < 10:  # No interferir con anti-stuck
-            if estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
-                # Si lleva menos de 10 pasos sin picar, seguir picando
-                if entorno.pasos_picando < 10:
-                    comando = "attack 1"
-            # Si acaba de terminar de picar (pasos_picando == 0 pero antes estaba picando)
-            # Moverse hacia adelante para recoger el drop
-            elif entorno.pasos_picando == 0 and entorno.picando_actualmente == False:
+            # Solo mantener attack si YA está picando y sigue viendo madera
+            if "attack" in comando and estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
+                # Ya está picando correctamente, mantener el comando
+                pass
+            # Si acaba de terminar de picar, sugerir moverse para recoger drops
+            elif entorno.pasos_picando == 0 and not entorno.picando_actualmente:
                 # Detectar si hay items cerca
                 entities = obs.get("entities", [])
                 hay_items_cerca = any(e.get("name") == "item" for e in entities)
-                if hay_items_cerca:
-                    comando = "move 1"  # Avanzar para recoger
-                    if verbose:
-                        print(f"   📦 Moviéndose para recoger item droppeado")
+                if hay_items_cerca and "move" not in comando:
+                    # Solo sugerir si el agente no ya eligió moverse
+                    if verbose and pasos % 25 == 0:
+                        print(f"   � Sugerencia: hay items cerca para recoger")
         
         # 3. EJECUTAR ACCIÓN (duración corta como agente agua)
         entorno.ejecutar_accion(comando, duracion=0.1)
