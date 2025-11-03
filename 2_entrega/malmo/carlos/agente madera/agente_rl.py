@@ -135,6 +135,12 @@ class AgenteQLearning:
             else:  # Oeste (X-)
                 indices_frente = [36, 31, 26]
             
+            # Bloques que NO son obstáculos (se pueden atravesar)
+            BLOQUES_ATRAVESABLES = [
+                "air", "tallgrass", "double_plant", "red_flower", "yellow_flower",
+                "leaves", "leaves2", "vine", "waterlily", "snow_layer", "web"
+            ]
+            
             for idx in indices_frente:
                 if idx < len(grid):
                     bloque_frente = grid[idx]
@@ -144,7 +150,8 @@ class AgenteQLearning:
                         break
                     elif bloque_frente == "air":
                         aire_frente = 1
-                    elif bloque_frente not in ["tallgrass", "leaves", "vine"]:
+                    elif not any(atravesable in bloque_frente for atravesable in BLOQUES_ATRAVESABLES):
+                        # Solo es obstáculo si NO está en la lista de atravesables
                         obstaculo_frente = 1
         
         # 3. Verificar inventario (si ya recogió madera)

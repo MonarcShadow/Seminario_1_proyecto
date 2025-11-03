@@ -8,6 +8,7 @@ Autor: Sistema de IA
 import sys
 import time
 import json
+import os
 import MalmoPython as Malmo
 
 from agente_rl import AgenteQLearning
@@ -15,10 +16,57 @@ from entorno_malmo import EntornoMalmo
 
 
 # ============================================================================
+# CARGAR CONFIGURACIÓN DESDE .config
+# ============================================================================
+
+def cargar_configuracion():
+    """
+    Carga la configuración desde el archivo .config
+    
+    Retorna:
+    --------
+    dict: Configuración con ip, puerto y semilla
+    """
+    config = {
+        'ip': '127.0.0.1',
+        'puerto': 10001,
+        'seed': 12345678
+    }
+    
+    # Buscar archivo .config en el directorio padre (malmo/)
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.config')
+    
+    try:
+        with open(config_path, 'r') as f:
+            for linea in f:
+                linea = linea.strip()
+                if '=' in linea and not linea.startswith('#'):
+                    clave, valor = linea.split('=', 1)
+                    clave = clave.strip()
+                    valor = valor.strip().strip('"')
+                    
+                    if clave == 'carlos':
+                        config['ip'] = valor
+                    elif clave == 'seed':
+                        config['seed'] = int(valor)
+        
+        print(f"✓ Configuración cargada desde: {config_path}")
+        print(f"  IP: {config['ip']}")
+        print(f"  Puerto: {config['puerto']}")
+        print(f"  Semilla: {config['seed']}")
+    except FileNotFoundError:
+        print(f"⚠ No se encontró {config_path}, usando valores por defecto")
+    except Exception as e:
+        print(f"⚠ Error al leer configuración: {e}, usando valores por defecto")
+    
+    return config
+
+
+# ============================================================================
 # CONFIGURACIÓN DEL MUNDO (XML de Malmo)
 # ============================================================================
 
-def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
+def obtener_mision_xml(seed=None, spawn_x=None, spawn_z=None, mundo_plano=False):
     """
     Genera XML de la misión con configuración para RL - Recolección de Madera
     
@@ -28,15 +76,27 @@ def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
         Semilla para generación del mundo (None = aleatorio)
     spawn_x, spawn_z: float o None
         Coordenadas de spawn (None = spawn natural)
+    mundo_plano: bool
+        Si True, genera mundo plano en lugar de normal (útil para pruebas)
     """
     seed_attr = f'seed="{seed}" forceReset="true"' if seed is not None else ""
+    
+    # Configurar generador de mundo
+    if mundo_plano:
+        # Mundo plano con árboles para pruebas
+        world_generator = '<FlatWorldGenerator generatorString="3;7,2*3,2;1;village,biome_1,decoration"/>'
+        spawn_y = 4  # Altura del mundo plano
+    else:
+        # Mundo normal generado
+        world_generator = f'<DefaultWorldGenerator {seed_attr}/>'
+        spawn_y = 64
     
     # Configurar spawn
     if spawn_x is not None and spawn_z is not None:
         spawn_placement = f'''
-      <Placement x="{spawn_x}" y="64" z="{spawn_z}" pitch="30" yaw="0"/>'''
+      <Placement x="{spawn_x}" y="{spawn_y}" z="{spawn_z}" pitch="0" yaw="0"/>'''
     else:
-        spawn_placement = "\n      <!-- Spawn natural del mundo (sin coordenadas fijas) -->"
+        spawn_placement = f"\n      <!-- Spawn natural del mundo (altura Y={spawn_y}) -->"
     
     return f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -54,8 +114,8 @@ def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
       <AllowSpawning>false</AllowSpawning>
     </ServerInitialConditions>
     <ServerHandlers>
-      <!-- Mundo normal generado con semilla fija para reproducibilidad -->
-      <DefaultWorldGenerator {seed_attr}/>
+      <!-- Generador de mundo (normal con semilla o plano para pruebas) -->
+      {world_generator}
       
       <ServerQuitFromTimeUp timeLimitMs="120000"/>  <!-- 120 segundos máximo -->
       <ServerQuitWhenAnyAgentFinishes/>
@@ -93,10 +153,11 @@ def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
       </ObservationFromNearbyEntities>
       
       <!-- RECOMPENSAS DEL MUNDO -->
-      <!-- Recompensa por recolectar bloques de madera -->
+      <!-- Recompensa por recolectar bloques de madera o tablas -->
       <RewardForCollectingItem>
         <Item type="log" reward="50.0"/>
         <Item type="log2" reward="50.0"/>
+        <Item type="planks" reward="50.0"/>
       </RewardForCollectingItem>
       
       <!-- Costo por acción -->
@@ -104,19 +165,10 @@ def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
       
       <!-- COMANDOS -->
       <DiscreteMovementCommands/>
-      <ContinuousMovementCommands turnSpeedDegs="180"/>
       
       <!-- CONDICIONES DE SALIDA -->
-      <!-- Terminar cuando obtenga al menos 1 madera -->
-      <AgentQuitFromCollectingItem>
-        <Item type="log" />
-        <Item type="log2" />
-      </AgentQuitFromCollectingItem>
-      
-      <!-- Seguridad: salir si cae muy bajo -->
-      <AgentQuitFromReachingPosition>
-        <Marker x="0" y="20" z="0" tolerance="50.0" description="Caída crítica"/>
-      </AgentQuitFromReachingPosition>
+      <!-- NO usar AgentQuitFromCollectingItem porque termina con 1 item -->
+      <!-- La terminación se maneja en código Python verificando cantidad -->
     </AgentHandlers>
   </AgentSection>
 </Mission>
@@ -172,26 +224,40 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         accion_idx = agente.elegir_accion(estado)
         comando = agente.obtener_comando(accion_idx)
         
-        # 2.5 SISTEMA ANTI-STUCK: Si está muy atascado, forzar movimiento
-        if entorno.pasos_sin_movimiento > 12:
-            # Forzar secuencia de escape: girar y saltar
-            if entorno.pasos_sin_movimiento % 4 == 0:
+        # 2.5 SISTEMA ANTI-STUCK: Si está muy atascado, forzar movimiento (igual que agente agua)
+        if entorno.pasos_sin_movimiento > 10:
+            # Forzar secuencia de escape: girar 180° y avanzar
+            if entorno.pasos_sin_movimiento == 11:
                 comando = "turn 1"
                 if verbose:
-                    print(f"   ⚠️ ANTI-STUCK: Girando...")
+                    print(f"   ⚠️ SISTEMA ANTI-STUCK: Girando para escapar...")
+            elif entorno.pasos_sin_movimiento == 12:
+                comando = "turn 1"
             else:
                 comando = "jumpmove 1"
                 if verbose:
-                    print(f"   ⚠️ ANTI-STUCK: Saltando...")
+                    print(f"   ⚠️ SISTEMA ANTI-STUCK: Saltando hacia adelante...")
+                entorno.pasos_sin_movimiento = 0  # Resetear después de secuencia
         
-        # 2.6 HEURÍSTICA: Si ve madera enfrente, picar
+        # 2.6 HEURÍSTICA: Si ve madera enfrente, picar (solo si no está en anti-stuck)
         # Esto ayuda al agente a aprender más rápido
-        if estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
-            # Si lleva menos de 10 pasos sin picar, seguir picando
-            if entorno.pasos_picando < 10:
-                comando = "attack 1"
+        if entorno.pasos_sin_movimiento < 10:  # No interferir con anti-stuck
+            if estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
+                # Si lleva menos de 10 pasos sin picar, seguir picando
+                if entorno.pasos_picando < 10:
+                    comando = "attack 1"
+            # Si acaba de terminar de picar (pasos_picando == 0 pero antes estaba picando)
+            # Moverse hacia adelante para recoger el drop
+            elif entorno.pasos_picando == 0 and entorno.picando_actualmente == False:
+                # Detectar si hay items cerca
+                entities = obs.get("entities", [])
+                hay_items_cerca = any(e.get("name") == "item" for e in entities)
+                if hay_items_cerca:
+                    comando = "move 1"  # Avanzar para recoger
+                    if verbose:
+                        print(f"   📦 Moviéndose para recoger item droppeado")
         
-        # 3. EJECUTAR ACCIÓN
+        # 3. EJECUTAR ACCIÓN (duración corta como agente agua)
         entorno.ejecutar_accion(comando, duracion=0.1)
         
         # 4. OBSERVAR RESULTADO Y RECOMPENSAS DE MALMO
@@ -228,11 +294,12 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
                   f"Acción: {comando:12s} | R: {recompensa:+6.2f} | Inv: {len(inventario)}")
         
         if madera_obtenida:
-            print(f"\n   🎉 ¡MADERA OBTENIDA en paso {pasos}!")
+            print(f"\n   🎉 ¡OBJETIVO COMPLETADO en paso {pasos}!")
+            print(f"   ✅ Alcanzó el objetivo: 2+ bloques de madera O 8+ tablas")
             break
         
         pasos += 1
-        time.sleep(0.05)  # Reducir para entrenamiento más rápido
+        time.sleep(0.1)  # Pequeña pausa entre iteraciones
     
     # Finalizar episodio
     agente.finalizar_episodio()
@@ -261,6 +328,10 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
     print("🚀 INICIANDO ENTRENAMIENTO DE AGENTE RL - RECOLECCIÓN DE MADERA")
     print("="*60)
     
+    # 0. CARGAR CONFIGURACIÓN
+    config = cargar_configuracion()
+    SEED_FIJA = config['seed']
+    
     # 1. INICIALIZAR MALMO
     agent_host = Malmo.AgentHost()
     
@@ -283,27 +354,22 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
     
     # 4. CONFIGURACIÓN DE CONEXIÓN
     client_pool = Malmo.ClientPool()
-    client_pool.add(Malmo.ClientInfo("127.0.0.1", 10001))
+    client_pool.add(Malmo.ClientInfo(config['ip'], config['puerto']))
     
     # 5. BUCLE DE ENTRENAMIENTO
     exitos = 0
     import random
     
     for episodio in range(num_episodios):
-        # Generar misión con spawn ALEATORIO
-        if episodio < 15:
-            # Primeros episodios: mismo mundo para aprender básicos
-            seed = 789123  # Mundo con árboles
-            # Spawn aleatorio en área de 150 bloques de radio
-            spawn_x = random.uniform(-150, 150)
-            spawn_z = random.uniform(-150, 150)
-        else:
-            # Después: mundos aleatorios para generalizar
-            seed = None
-            spawn_x = None
-            spawn_z = None
+        # Usar semilla fija para mundo predecible
+        seed = SEED_FIJA
         
-        mision_xml = obtener_mision_xml(seed, spawn_x, spawn_z)
+        # Spawn natural del mundo (Minecraft elige posición segura)
+        # El agente puede tener obstáculos en algunas direcciones pero no todas
+        spawn_x = None
+        spawn_z = None
+        
+        mision_xml = obtener_mision_xml(seed, spawn_x, spawn_z, mundo_plano=False)
         mission = Malmo.MissionSpec(mision_xml, True)
         mission_record = Malmo.MissionRecordSpec()
         
@@ -328,7 +394,26 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
             time.sleep(0.1)
             world_state = agent_host.getWorldState()
         
-        print("✓ Misión iniciada")
+        print("✓ Misión iniciada (mundo normal)")
+        
+        # Esperar más tiempo en mundo normal (tarda más en generar terreno)
+        print("⏳ Esperando generación de terreno...")
+        time.sleep(5)
+        
+        # Verificar que la misión sigue corriendo
+        world_state = agent_host.getWorldState()
+        if not world_state.is_mission_running:
+            print("❌ La misión terminó inmediatamente. Saltando episodio...")
+            for error in world_state.errors:
+                print(f"   Error: {error.text}")
+            continue
+        
+        # Verificar que tenemos observaciones
+        if world_state.number_of_observations_since_last_state == 0:
+            print("⏳ Esperando observaciones iniciales...")
+            time.sleep(2)
+        
+        print("✓ Agente spawneado correctamente, iniciando episodio...")
         
         # Ejecutar episodio
         stats = ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=(episodio % 5 == 0))

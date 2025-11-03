@@ -19,7 +19,27 @@ El agente debe:
 
 ## 🚀 Uso
 
-### Entrenar el agente
+### 1. Verificar que funciona (Mundo Plano)
+
+**RECOMENDADO PRIMERO**: Prueba en mundo plano para evitar problemas de terreno
+
+```bash
+# Prueba rápida de movimientos (30 segundos)
+python test_movimiento.py
+
+# Entrenamiento de prueba en mundo plano (10 episodios)
+python entrenar_plano.py 10
+```
+
+El mundo plano evita:
+- ❌ Muerte por caída
+- ❌ Sofocación en bloques
+- ❌ Spawn en agua/lava
+- ❌ Terreno irregular
+
+### 2. Entrenar en mundo normal
+
+Una vez verificado que funciona en mundo plano:
 
 ```bash
 python mundo_rl.py
@@ -28,6 +48,7 @@ python mundo_rl.py
 El entrenamiento ejecutará 50 episodios por defecto. Cada episodio:
 - Dura máximo 120 segundos o 800 pasos
 - El agente spawn en posiciones aleatorias
+- Usa semilla fija del archivo `.config`
 - Termina cuando obtiene madera o se acaba el tiempo
 
 ### Parámetros configurables

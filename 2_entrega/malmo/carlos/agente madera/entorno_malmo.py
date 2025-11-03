@@ -97,12 +97,14 @@ class EntornoMalmo:
         # Recompensa base incluye el costo por acción de Malmo (-0.5)
         recompensa = recompensa_malmo
         
-        # 3. SEÑAL DE PROXIMIDAD: Detectar madera en grid
+        # 3. SEÑAL DE PROXIMIDAD: Detectar madera y hojas en grid
         grid = obs.get("near5x3x5", [])
         madera_en_grid = 0
+        hojas_en_grid = 0
         madera_muy_cerca = False
         
         TIPOS_MADERA_BLOQUES = ["log", "log2"]
+        TIPOS_HOJAS = ["leaves", "leaves2"]
         
         for i, bloque in enumerate(grid):
             if any(madera in bloque for madera in TIPOS_MADERA_BLOQUES):
@@ -116,6 +118,10 @@ class EntornoMalmo:
                 
                 if dist <= 2:
                     madera_muy_cerca = True
+            
+            # Detectar hojas como indicador de árbol cerca
+            elif any(hoja in bloque for hoja in TIPOS_HOJAS):
+                hojas_en_grid += 1
         
         # Recompensar acercarse a madera
         if madera_en_grid > self.madera_previa:
@@ -127,6 +133,11 @@ class EntornoMalmo:
         elif madera_muy_cerca:
             recompensa += 20.0
             print(f"   🎯 Madera muy cerca, listo para picar (+20)")
+        
+        # Recompensar detectar hojas (indicador de árbol)
+        if hojas_en_grid > 0 and madera_en_grid == 0:
+            recompensa += 5.0
+            print(f"   🍃 Hojas detectadas, árbol cerca (+5)")
         
         self.madera_previa = madera_en_grid
         
@@ -157,42 +168,83 @@ class EntornoMalmo:
             self.picando_actualmente = False
             self.pasos_picando = 0
         
+        # 4.5. DETECTAR ITEMS DROPPEADOS (madera en el suelo)
+        # Incentivar moverse hacia items después de picar
+        entities = obs.get("entities", [])
+        item_madera_cerca = None
+        distancia_item_min = float('inf')
+        
+        for entity in entities:
+            if entity.get("name", "") == "item":
+                # Obtener posición del item
+                item_x = entity.get("x", 0)
+                item_y = entity.get("y", 0)
+                item_z = entity.get("z", 0)
+                
+                # Posición del agente
+                agent_x = obs.get("XPos", 0)
+                agent_y = obs.get("YPos", 0)
+                agent_z = obs.get("ZPos", 0)
+                
+                # Calcular distancia 2D (X, Z)
+                dist = ((item_x - agent_x)**2 + (item_z - agent_z)**2)**0.5
+                
+                if dist < distancia_item_min:
+                    distancia_item_min = dist
+                    item_madera_cerca = entity
+        
+        # Recompensar acercarse a items droppeados
+        if item_madera_cerca and distancia_item_min < 5.0:
+            if distancia_item_min < 1.5:
+                # Muy cerca, debería recogerlo automáticamente
+                recompensa += 40.0
+                print(f"   📦 Muy cerca de item droppeado (+40)")
+            elif distancia_item_min < 3.0:
+                # Cerca, acercándose
+                recompensa += 25.0
+                print(f"   📦 Acercándose a item droppeado (+25)")
+            else:
+                # Detectado, pero lejos
+                recompensa += 10.0
+                print(f"   📦 Item droppeado detectado (+10)")
+        
         # 5. DETECTAR MOVIMIENTO REAL
         x = obs.get("XPos", 0)
         y = obs.get("YPos", 64)
         z = obs.get("ZPos", 0)
         posicion_actual = (round(x, 1), round(y, 1), round(z, 1))
         
+        # Calcular distancia SOLO en 2D (X, Z) como en agente agua
+        # Ignorar Y porque saltar/caer no debería contar como "moverse"
         distancia = ((posicion_actual[0] - self.posicion_previa[0])**2 + 
-                    (posicion_actual[1] - self.posicion_previa[1])**2 +
                     (posicion_actual[2] - self.posicion_previa[2])**2)**0.5
         
-        if distancia > 0.3:  # Se movió al menos 0.3 bloques
+        if distancia > 0.3:  # Se movió al menos 0.3 bloques (mismo que agente agua)
             # ✅ MOVIMIENTO EXITOSO
             recompensa += 3.0
             self.pasos_sin_movimiento = 0
         else:
-            # ❌ NO SE MOVIÓ (a menos que esté picando)
-            if not self.picando_actualmente:
-                self.pasos_sin_movimiento += 1
+            # ❌ NO SE MOVIÓ
+            self.pasos_sin_movimiento += 1
+            
+            # Agregar acción al historial
+            self.historial_acciones.append(accion)
+            if len(self.historial_acciones) > 10:
+                self.historial_acciones.pop(0)
+            
+            # DETECTAR LOOP: Si lleva muchos giros consecutivos (igual que agua)
+            if self.pasos_sin_movimiento > 3:
+                # Revisar si está alternando entre giros
+                ultimas_3 = self.historial_acciones[-3:]
+                if all("turn" in a for a in ultimas_3):
+                    recompensa -= 20.0  # CASTIGO FUERTE por loop de giros
+            
+            # ATASCADO COMPLETAMENTE (mismo threshold que agua)
+            if self.pasos_sin_movimiento > 8:
+                recompensa -= 30.0  # CASTIGO MUY FUERTE
                 
-                # Agregar acción al historial
-                self.historial_acciones.append(accion)
-                if len(self.historial_acciones) > 10:
-                    self.historial_acciones.pop(0)
-                
-                # DETECTAR LOOP: giros consecutivos sin movimiento
-                if self.pasos_sin_movimiento > 3:
-                    ultimas_3 = self.historial_acciones[-3:]
-                    if all("turn" in a for a in ultimas_3):
-                        recompensa -= 20.0
-                
-                # ATASCADO COMPLETAMENTE
-                if self.pasos_sin_movimiento > 8:
-                    recompensa -= 30.0
-                    
-                # Penalización progresiva por quedarse quieto
-                recompensa -= (1.0 * self.pasos_sin_movimiento)
+            # Penalización progresiva por quedarse quieto (igual que agua)
+            recompensa -= (2.0 * self.pasos_sin_movimiento)
         
         self.posicion_previa = posicion_actual
         
@@ -252,16 +304,18 @@ class EntornoMalmo:
             Tiempo de espera después del comando
         """
         self.agent_host.sendCommand(comando)
+        time.sleep(duracion)
         
         # Para picar, necesita mantener el comando más tiempo
         if "attack" in comando:
-            time.sleep(0.5)  # Mantener picando
             # En Minecraft 1.11.2, necesita múltiples ataques para romper bloque
-            for _ in range(3):  # Picar 3 veces
+            for _ in range(3):  # Picar 3 veces adicionales
+                time.sleep(0.2)
                 self.agent_host.sendCommand(comando)
                 time.sleep(0.2)
-        else:
-            time.sleep(duracion)
+        elif "move" in comando:
+            # Tiempo adicional para comandos de movimiento (igual que agente agua)
+            time.sleep(0.1)
     
     def actualizar_world_state(self):
         """
@@ -281,7 +335,9 @@ class EntornoMalmo:
     
     def verificar_madera_obtenida(self, obs):
         """
-        Verifica si el agente obtuvo madera en su inventario
+        Verifica si el agente obtuvo suficiente madera en su inventario
+        
+        Objetivo: 2+ bloques de madera (log/log2) O 8+ tablas (planks)
         
         Parámetros:
         -----------
@@ -290,20 +346,36 @@ class EntornoMalmo:
         
         Retorna:
         --------
-        bool: True si tiene madera en inventario
+        bool: True si alcanzó el objetivo (2+ logs o 8+ planks)
         """
         if obs is None:
             return False
         
         inventario = obs.get("inventory", [])
-        TIPOS_MADERA = ["log", "log2", "planks"]
+        
+        total_logs = 0
+        total_planks = 0
         
         for item in inventario:
             item_type = item.get("type", "")
             cantidad = item.get("quantity", 0)
-            if any(madera in item_type for madera in TIPOS_MADERA) and cantidad > 0:
-                print(f"🎉 ¡MADERA EN INVENTARIO! {item_type}: {cantidad}")
-                return True
+            
+            if "log" in item_type:  # log o log2
+                total_logs += cantidad
+            elif "planks" in item_type:
+                total_planks += cantidad
+        
+        # Verificar si alcanzó el objetivo
+        if total_logs >= 2:
+            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_logs} bloques de madera (log)")
+            return True
+        elif total_planks >= 8:
+            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_planks} tablas (planks)")
+            return True
+        
+        # Mostrar progreso si tiene algo
+        if total_logs > 0 or total_planks > 0:
+            print(f"📊 Progreso: {total_logs}/2 logs, {total_planks}/8 planks")
         
         return False
     
