@@ -311,7 +311,8 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
     }
 
 
-def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_madera.pkl"):
+def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_madera.pkl", 
+             mundo_plano=False, epsilon_override=None, mostrar_cada=10):
     """
     Bucle principal de entrenamiento
     
@@ -323,6 +324,12 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
         Guardar modelo cada N episodios
     modelo_path: str
         Ruta para guardar/cargar el modelo
+    mundo_plano: bool
+        Si True, usa mundo plano para pruebas. Si False, mundo normal
+    epsilon_override: float or None
+        Si se especifica, fuerza este valor de epsilon (útil para ejecución sin exploración)
+    mostrar_cada: int
+        Mostrar detalles cada N episodios
     """
     print("\n" + "="*60)
     print("🚀 INICIANDO ENTRENAMIENTO DE AGENTE RL - RECOLECCIÓN DE MADERA")
@@ -349,6 +356,11 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
     except:
         print("⚠ Iniciando entrenamiento desde cero")
     
+    # Aplicar epsilon_override si se especificó (para ejecución sin exploración)
+    if epsilon_override is not None:
+        agente.epsilon = epsilon_override
+        print(f"🎯 Epsilon forzado a: {epsilon_override} (modo {'EXPLOTACIÓN' if epsilon_override == 0 else 'PERSONALIZADO'})")
+    
     # 3. CREAR ENTORNO
     entorno = EntornoMalmo(agent_host)
     
@@ -369,7 +381,7 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
         spawn_x = None
         spawn_z = None
         
-        mision_xml = obtener_mision_xml(seed, spawn_x, spawn_z, mundo_plano=False)
+        mision_xml = obtener_mision_xml(seed, spawn_x, spawn_z, mundo_plano=mundo_plano)
         mission = Malmo.MissionSpec(mision_xml, True)
         mission_record = Malmo.MissionRecordSpec()
         

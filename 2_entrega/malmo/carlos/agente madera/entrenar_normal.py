@@ -34,7 +34,9 @@ if __name__ == "__main__":
         entrenar(
             num_episodios=num_episodios,
             guardar_cada=10,
-            modelo_path="modelo_agente_madera.pkl"
+            modelo_path="modelo_agente_madera.pkl",
+            mundo_plano=False,
+            mostrar_cada=10
         )
     except KeyboardInterrupt:
         print("\n\n⚠️  Entrenamiento interrumpido por el usuario")

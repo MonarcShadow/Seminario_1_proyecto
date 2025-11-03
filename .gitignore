@@ -10,3 +10,6 @@ MinecraftAgente/resultados/metricas_20250919_182330.csv
 __pycache__/
 *.pyc
 2_entrega/README_MALMO.md
+2_entrega/malmo/carlos/agente madera/modelo_agente_madera_plano.pkl
+2_entrega/malmo/carlos/agente madera/modelo_agente_madera.pkl
+
