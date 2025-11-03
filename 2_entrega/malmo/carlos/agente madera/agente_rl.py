@@ -1,39 +1,36 @@
 """
 Agente de Aprendizaje por Refuerzo (Q-Learning)
-Para recolección de madera en Minecraft usando Malmo
-
-Objetivo: Conseguir 3 bloques de madera (log) picando árboles
+Para búsqueda y recolección de madera en Minecraft usando Malmo
 
 Autor: Sistema de IA
 """
 
 import numpy as np
 import random
+import json
 import pickle
 from collections import defaultdict
 
 
-class AgenteMaderaQLearning:
+class AgenteQLearning:
     """
-    Agente que aprende mediante Q-Learning a recolectar madera
-    usando información de la rejilla de bloques e inventario
+    Agente que aprende mediante Q-Learning a encontrar y recolectar madera
+    usando información de la rejilla 5x3x5 de bloques
     """
     
     # Acciones disponibles (índices)
     ACCIONES = {
-        0: "move 1",           # Avanzar
-        1: "turn 1",           # Girar derecha 90°
-        2: "turn -1",          # Girar izquierda 90°
-        3: "jumpmove 1",       # Saltar y avanzar
-        4: "attack 1",         # Atacar/Picar (mantener)
-        5: "strafe 1",         # Moverse a la derecha
-        6: "strafe -1",        # Moverse a la izquierda
+        0: "move 1",      # Avanzar
+        1: "turn 1",      # Girar derecha 90°
+        2: "turn -1",     # Girar izquierda 90°
+        3: "jumpmove 1",  # Saltar y avanzar
+        4: "attack 1",    # Picar bloque (mantener presionado)
     }
     
     def __init__(self, 
-                 alpha=0.15,      # Tasa de aprendizaje
-                 gamma=0.95,      # Factor de descuento
-                 epsilon=0.4,     # Tasa de exploración inicial
+                 alpha=0.1,      # Tasa de aprendizaje
+                 gamma=0.95,     # Factor de descuento
+                 epsilon=0.3,    # Tasa de exploración inicial
                  epsilon_min=0.05,
                  epsilon_decay=0.995):
         """
@@ -68,19 +65,18 @@ class AgenteMaderaQLearning:
         self.historial_recompensas = []
         self.historial_pasos = []
         self.historial_epsilon = []
-        self.historial_madera_recolectada = []
     
     def obtener_estado_discretizado(self, obs):
         """
         Convierte las observaciones crudas en un estado discreto
         
-        Estado = (orientación, madera_visible, madera_en_inventario, 
-                  mirando_madera, distancia_a_madera, obstaculo_frente)
+        Estado = (orientación, madera_cerca, madera_frente, distancia_madera, 
+                  obstaculo_frente, tiene_madera_inventario, altura_relativa)
         
         Parámetros:
         -----------
         obs: dict
-            Observaciones de Malmo (incluye grid, raycast, inventario)
+            Observaciones de Malmo (incluye grid, posición, inventario, etc.)
         
         Retorna:
         --------
@@ -90,91 +86,96 @@ class AgenteMaderaQLearning:
         yaw = obs.get("Yaw", 0)
         orientacion = round(yaw / 90) % 4  # 0=Norte, 1=Este, 2=Sur, 3=Oeste
         
-        # 2. Analizar rejilla 5x5x5 para detectar madera
-        grid = obs.get("near5x5x5", [])
+        # 2. Analizar rejilla 5x3x5
+        grid = obs.get("near5x3x5", [])
         
-        tipos_madera = ["log", "log2", "wood"]  # Diferentes tipos de troncos
+        # Tipos de madera en Minecraft 1.11.2
+        TIPOS_MADERA = [
+            "log", "log2",  # Troncos
+            "planks",       # Tablas (por si acaso)
+        ]
         
-        madera_visible = 0
+        # Contar tipos de bloques relevantes
         madera_cerca = 0
-        hojas_visibles = 0
-        
-        if len(grid) >= 75:  # Al menos 5x3x5
-            for bloque in grid:
-                if bloque in tipos_madera:
-                    madera_visible = 1
-                    madera_cerca += 1
-                elif bloque in ["leaves", "leaves2"]:
-                    hojas_visibles += 1
-        
-        # Discretizar cantidad de madera visible
-        if madera_cerca == 0:
-            nivel_madera = 0
-        elif madera_cerca <= 2:
-            nivel_madera = 1  # Poca madera
-        else:
-            nivel_madera = 2  # Mucha madera (árbol completo)
-        
-        # 3. Inventario - Contar madera recolectada
-        inventario = obs.get("inventory", [])
-        madera_en_inventario = 0
-        
-        for item in inventario:
-            tipo = item.get("type", "")
-            if tipo in tipos_madera:
-                madera_en_inventario += item.get("quantity", 0)
-        
-        # Discretizar inventario (0, 1, 2, 3+)
-        if madera_en_inventario == 0:
-            nivel_inventario = 0
-        elif madera_en_inventario == 1:
-            nivel_inventario = 1
-        elif madera_en_inventario == 2:
-            nivel_inventario = 2
-        else:
-            nivel_inventario = 3  # 3 o más (objetivo alcanzado)
-        
-        # 4. Raycast - ¿Está mirando directamente a madera?
-        linea_vista = obs.get("LineOfSight", {})
-        tipo_mirando = linea_vista.get("type", "air")
-        
-        mirando_madera = 1 if tipo_mirando in tipos_madera else 0
-        
-        # 5. Distancia a bloque que mira
-        distancia = linea_vista.get("distance", 10.0)
-        if distancia < 2.0:
-            dist_categoria = 0  # Muy cerca (puede picar)
-        elif distancia < 4.0:
-            dist_categoria = 1  # Cerca
-        else:
-            dist_categoria = 2  # Lejos
-        
-        # 6. Obstáculo al frente (para navegación)
+        madera_frente = 0
         obstaculo_frente = 0
-        if len(grid) >= 38:
-            # Bloque justo enfrente
-            bloque_frente = grid[37]  # Centro aproximado
-            if bloque_frente not in ["air", "tallgrass", "leaves", "leaves2"]:
-                obstaculo_frente = 1
+        aire_frente = 0
+        distancia_madera = 3  # 0=muy cerca, 1=cerca, 2=lejos, 3=no visible
         
-        # 7. Indicador de hojas (señal de árbol cercano)
-        if hojas_visibles > 5:
-            indicador_hojas = 2  # Muchas hojas
-        elif hojas_visibles > 0:
-            indicador_hojas = 1  # Algunas hojas
+        if len(grid) == 75:  # 5x3x5 = 75 bloques
+            # Centro del grid es el agente (índice 37)
+            
+            # Detectar madera en el grid
+            for i, bloque in enumerate(grid):
+                if any(madera in bloque for madera in TIPOS_MADERA):
+                    madera_cerca = 1
+                    
+                    # Calcular distancia aproximada al bloque de madera
+                    # Convertir índice a coordenadas 3D en el grid
+                    x = (i % 5) - 2  # -2 a 2
+                    y = ((i // 5) % 3) - 1  # -1 a 1
+                    z = (i // 15) - 2  # -2 a 2
+                    dist = abs(x) + abs(y) + abs(z)  # Distancia Manhattan
+                    
+                    if dist <= 2:
+                        distancia_madera = 0  # Muy cerca (puede picar)
+                    elif dist <= 4:
+                        distancia_madera = 1  # Cerca (acercarse)
+                    else:
+                        distancia_madera = 2  # Lejos
+            
+            # Detectar madera justo al frente (según orientación)
+            # Para poder picar, necesita estar mirando al bloque
+            if orientacion == 0:  # Norte (Z-)
+                indices_frente = [32, 27, 22]  # Frente en diferentes alturas
+            elif orientacion == 1:  # Este (X+)
+                indices_frente = [38, 33, 28]
+            elif orientacion == 2:  # Sur (Z+)
+                indices_frente = [42, 47, 52]
+            else:  # Oeste (X-)
+                indices_frente = [36, 31, 26]
+            
+            for idx in indices_frente:
+                if idx < len(grid):
+                    bloque_frente = grid[idx]
+                    if any(madera in bloque_frente for madera in TIPOS_MADERA):
+                        madera_frente = 1
+                        distancia_madera = 0  # Puede picar
+                        break
+                    elif bloque_frente == "air":
+                        aire_frente = 1
+                    elif bloque_frente not in ["tallgrass", "leaves", "vine"]:
+                        obstaculo_frente = 1
+        
+        # 3. Verificar inventario (si ya recogió madera)
+        inventario = obs.get("inventory", [])
+        tiene_madera = 0
+        for item in inventario:
+            item_type = item.get("type", "")
+            if any(madera in item_type for madera in TIPOS_MADERA):
+                tiene_madera = 1
+                break
+        
+        # 4. Altura relativa (útil para navegación)
+        y_pos = obs.get("YPos", 64)
+        if y_pos < 60:
+            altura = 0  # Bajo
+        elif y_pos < 70:
+            altura = 1  # Medio
         else:
-            indicador_hojas = 0  # Sin hojas
+            altura = 2  # Alto
         
-        # Estado final: tupla inmutable
-        estado = (
-            orientacion,
-            nivel_madera,
-            nivel_inventario,
-            mirando_madera,
-            dist_categoria,
-            obstaculo_frente,
-            indicador_hojas
-        )
+        # 5. Detectar si está mirando un bloque de madera (LineOfSight)
+        line_of_sight = obs.get("LineOfSight", {})
+        mirando_madera = 0
+        if isinstance(line_of_sight, dict):
+            tipo_bloque = line_of_sight.get("type", "")
+            if any(madera in tipo_bloque for madera in TIPOS_MADERA):
+                mirando_madera = 1
+        
+        # Estado final: tupla inmutable para usar como clave
+        estado = (orientacion, madera_cerca, madera_frente, distancia_madera, 
+                  obstaculo_frente, aire_frente, tiene_madera, altura, mirando_madera)
         
         return estado
     
@@ -225,6 +226,7 @@ class AgenteMaderaQLearning:
         q_actual = self.Q[estado][accion]
         
         if terminado:
+            # Si terminó, no hay siguiente estado
             q_siguiente_max = 0
         else:
             q_siguiente_max = np.max(self.Q[siguiente_estado])
@@ -238,14 +240,9 @@ class AgenteMaderaQLearning:
         self.recompensa_total_episodio += recompensa
         self.pasos_episodio += 1
     
-    def finalizar_episodio(self, madera_recolectada):
+    def finalizar_episodio(self):
         """
         Actualiza estadísticas y decae epsilon al final de un episodio
-        
-        Parámetros:
-        -----------
-        madera_recolectada: int
-            Cantidad de madera conseguida en el episodio
         """
         self.episodios_completados += 1
         
@@ -253,7 +250,6 @@ class AgenteMaderaQLearning:
         self.historial_recompensas.append(self.recompensa_total_episodio)
         self.historial_pasos.append(self.pasos_episodio)
         self.historial_epsilon.append(self.epsilon)
-        self.historial_madera_recolectada.append(madera_recolectada)
         
         # Decaer epsilon (menos exploración con el tiempo)
         if self.epsilon > self.epsilon_min:
@@ -281,13 +277,12 @@ class AgenteMaderaQLearning:
     def guardar_modelo(self, filepath):
         """Guarda la tabla Q y parámetros del agente"""
         datos = {
-            'Q': dict(self.Q),
+            'Q': dict(self.Q),  # Convertir defaultdict a dict
             'episodios': self.episodios_completados,
             'epsilon': self.epsilon,
             'historial_recompensas': self.historial_recompensas,
             'historial_pasos': self.historial_pasos,
-            'historial_epsilon': self.historial_epsilon,
-            'historial_madera': self.historial_madera_recolectada
+            'historial_epsilon': self.historial_epsilon
         }
         
         with open(filepath, 'wb') as f:
@@ -307,7 +302,6 @@ class AgenteMaderaQLearning:
             self.historial_recompensas = datos['historial_recompensas']
             self.historial_pasos = datos['historial_pasos']
             self.historial_epsilon = datos['historial_epsilon']
-            self.historial_madera_recolectada = datos.get('historial_madera', [])
             
             print(f"✓ Modelo cargado desde: {filepath}")
             print(f"  Episodios previos: {self.episodios_completados}")
@@ -332,23 +326,10 @@ class AgenteMaderaQLearning:
         print(f"\nÚltimos 10 episodios:")
         print(f"  Recompensa promedio: {np.mean(self.historial_recompensas[-10:]):.2f}")
         print(f"  Pasos promedio: {np.mean(self.historial_pasos[-10:]):.2f}")
-        
-        if len(self.historial_madera_recolectada) > 0:
-            print(f"  Madera promedio: {np.mean(self.historial_madera_recolectada[-10:]):.2f}")
-        
         print(f"\nMejor episodio:")
         if self.historial_recompensas:
             mejor_idx = np.argmax(self.historial_recompensas)
             print(f"  Episodio #{mejor_idx + 1}")
             print(f"  Recompensa: {self.historial_recompensas[mejor_idx]:.2f}")
             print(f"  Pasos: {self.historial_pasos[mejor_idx]}")
-            if len(self.historial_madera_recolectada) > mejor_idx:
-                print(f"  Madera recolectada: {self.historial_madera_recolectada[mejor_idx]}")
-        
-        # Tasa de éxito (3 o más maderas)
-        if len(self.historial_madera_recolectada) > 0:
-            exitos = sum(1 for m in self.historial_madera_recolectada if m >= 3)
-            tasa = 100 * exitos / len(self.historial_madera_recolectada)
-            print(f"\nTasa de éxito (3+ maderas): {exitos}/{len(self.historial_madera_recolectada)} ({tasa:.1f}%)")
-        
         print("="*60 + "\n")

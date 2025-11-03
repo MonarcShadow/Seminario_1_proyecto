@@ -1,6 +1,6 @@
 """
-Script Principal: Entrenamiento del Agente RL para Recolección de Madera
-Objetivo: Conseguir 3 bloques de madera picando árboles
+Script Principal: Entrenamiento del Agente RL en Malmo
+Búsqueda y Recolección de Madera usando Q-Learning
 
 Autor: Sistema de IA
 """
@@ -10,27 +10,38 @@ import time
 import json
 import MalmoPython as Malmo
 
-from agente_madera_rl import AgenteMaderaQLearning
-from entorno_madera import EntornoMadera
+from agente_rl import AgenteQLearning
+from entorno_malmo import EntornoMalmo
 
 
 # ============================================================================
 # CONFIGURACIÓN DEL MUNDO (XML de Malmo)
 # ============================================================================
 
-def obtener_mision_xml(seed=42):
+def obtener_mision_xml(seed=123456, spawn_x=None, spawn_z=None):
     """
-    Genera XML de la misión con mundo normal, árboles y pico de madera inicial
+    Genera XML de la misión con configuración para RL - Recolección de Madera
     
     Parámetros:
     -----------
-    seed: int
-        Semilla para generación del mundo
+    seed: int o None
+        Semilla para generación del mundo (None = aleatorio)
+    spawn_x, spawn_z: float o None
+        Coordenadas de spawn (None = spawn natural)
     """
+    seed_attr = f'seed="{seed}" forceReset="true"' if seed is not None else ""
+    
+    # Configurar spawn
+    if spawn_x is not None and spawn_z is not None:
+        spawn_placement = f'''
+      <Placement x="{spawn_x}" y="64" z="{spawn_z}" pitch="30" yaw="0"/>'''
+    else:
+        spawn_placement = "\n      <!-- Spawn natural del mundo (sin coordenadas fijas) -->"
+    
     return f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <About>
-    <Summary>Entrenamiento RL - Recolección de Madera (Objetivo: 3 bloques)</Summary>
+    <Summary>Entrenamiento RL - Búsqueda y Recolección de Madera</Summary>
   </About>
 
   <ServerSection>
@@ -43,85 +54,69 @@ def obtener_mision_xml(seed=42):
       <AllowSpawning>false</AllowSpawning>
     </ServerInitialConditions>
     <ServerHandlers>
-      <!-- Mundo normal con árboles -->
-      <DefaultWorldGenerator seed="{seed}" forceReset="false"/>
+      <!-- Mundo normal generado con semilla fija para reproducibilidad -->
+      <DefaultWorldGenerator {seed_attr}/>
       
-      <ServerQuitFromTimeUp timeLimitMs="120000"/>  <!-- 2 minutos máximo -->
+      <ServerQuitFromTimeUp timeLimitMs="120000"/>  <!-- 120 segundos máximo -->
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
   </ServerSection>
 
   <AgentSection mode="Survival">
-    <Name>AgenteMadera</Name>
-    <AgentStart>
-      <!-- Spawn en zona con árboles (ajustar según seed) -->
-      <Placement x="0" y="64" z="0" pitch="0" yaw="0"/>
-      
-      <!-- Inventario inicial: Hacha de madera en slot 0 (hotbar) -->
+    <Name>AgentRL_Madera</Name>
+    <AgentStart>{spawn_placement}
       <Inventory>
-        <InventoryItem slot="0" type="wooden_axe"/>
+        <!-- El agente empieza sin herramientas (manos desnudas) -->
       </Inventory>
     </AgentStart>
-    
     <AgentHandlers>
-      <!-- ==================== OBSERVACIONES ==================== -->
-      
-      <!-- Estadísticas completas (posición, salud, inventario, etc.) -->
+      <!-- OBSERVACIONES -->
       <ObservationFromFullStats/>
       
-      <!-- Rejilla 5x5x5 para percepción local de bloques -->
+      <!-- Rejilla 5x3x5 para percepción local -->
       <ObservationFromGrid>
-        <Grid name="near5x5x5">
-          <min x="-2" y="-2" z="-2"/>
-          <max x="2" y="2" z="2"/>
+        <Grid name="near5x3x5">
+          <min x="-2" y="-1" z="-2"/>
+          <max x="2" y="1" z="2"/>
         </Grid>
       </ObservationFromGrid>
       
-      <!-- Raycast para detectar qué bloque está mirando -->
+      <!-- Raycast para ver qué mira el agente -->
       <ObservationFromRay/>
       
-      <!-- Información del inventario -->
+      <!-- Inventario para saber si recogió madera -->
       <ObservationFromFullInventory/>
       
-      <!-- Detectar entidades cercanas -->
+      <!-- Detectar entidades cercanas (items droppeados) -->
       <ObservationFromNearbyEntities>
-        <Range name="entities" xrange="20" yrange="10" zrange="20"/>
+        <Range name="entities" xrange="10" yrange="5" zrange="10"/>
       </ObservationFromNearbyEntities>
       
-      <!-- ==================== RECOMPENSAS ==================== -->
-      
-      <!-- Recompensa por recolectar madera -->
+      <!-- RECOMPENSAS DEL MUNDO -->
+      <!-- Recompensa por recolectar bloques de madera -->
       <RewardForCollectingItem>
-        <Item reward="100.0" type="log"/>
-        <Item reward="100.0" type="log2"/>
+        <Item type="log" reward="50.0"/>
+        <Item type="log2" reward="50.0"/>
       </RewardForCollectingItem>
       
-      <!-- Pequeño costo por comando (fomenta eficiencia) -->
+      <!-- Costo por acción -->
       <RewardForSendingCommand reward="-0.5"/>
       
-      <!-- ==================== COMANDOS ==================== -->
-      
-      <!-- Comandos discretos de movimiento -->
+      <!-- COMANDOS -->
       <DiscreteMovementCommands/>
+      <ContinuousMovementCommands turnSpeedDegs="180"/>
       
-      <!-- Comandos continuos para atacar/picar -->
-      <ContinuousMovementCommands>
-        <ModifierList type="deny-list">
-          <command>move</command>
-          <command>turn</command>
-          <command>strafe</command>
-          <command>jump</command>
-          <command>crouch</command>
-        </ModifierList>
-      </ContinuousMovementCommands>
-      
-      <!-- ==================== CONDICIONES DE SALIDA ==================== -->
-      
-      <!-- El agente termina cuando consigue 3 maderas -->
+      <!-- CONDICIONES DE SALIDA -->
+      <!-- Terminar cuando obtenga al menos 1 madera -->
       <AgentQuitFromCollectingItem>
-        <Item type="log" amount="3"/>
+        <Item type="log" />
+        <Item type="log2" />
       </AgentQuitFromCollectingItem>
       
+      <!-- Seguridad: salir si cae muy bajo -->
+      <AgentQuitFromReachingPosition>
+        <Marker x="0" y="20" z="0" tolerance="50.0" description="Caída crítica"/>
+      </AgentQuitFromReachingPosition>
     </AgentHandlers>
   </AgentSection>
 </Mission>
@@ -140,9 +135,9 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
     -----------
     agent_host: MalmoPython.AgentHost
         Cliente de Malmo
-    agente: AgenteMaderaQLearning
+    agente: AgenteQLearning
         Agente de RL
-    entorno: EntornoMadera
+    entorno: EntornoMalmo
         Wrapper del entorno
     max_pasos: int
         Máximo de pasos por episodio
@@ -155,17 +150,13 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
     """
     entorno.reset()
     pasos = 0
-    objetivo_completado = False
-    madera_recolectada = 0
+    madera_obtenida = False
     
     if verbose:
-        print(f"\n{'='*70}")
+        print(f"\n{'='*60}")
         print(f"🎮 EPISODIO #{agente.episodios_completados + 1}")
-        print(f"   Epsilon: {agente.epsilon:.4f} | Objetivo: 3 bloques de madera")
-        print(f"{'='*70}")
-    
-    # Esperar a tener primera observación
-    time.sleep(2)
+        print(f"   Epsilon: {agente.epsilon:.4f} (exploración)")
+        print(f"{'='*60}")
     
     while entorno.actualizar_world_state() and pasos < max_pasos:
         obs = entorno.obtener_observacion()
@@ -181,8 +172,27 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         accion_idx = agente.elegir_accion(estado)
         comando = agente.obtener_comando(accion_idx)
         
+        # 2.5 SISTEMA ANTI-STUCK: Si está muy atascado, forzar movimiento
+        if entorno.pasos_sin_movimiento > 12:
+            # Forzar secuencia de escape: girar y saltar
+            if entorno.pasos_sin_movimiento % 4 == 0:
+                comando = "turn 1"
+                if verbose:
+                    print(f"   ⚠️ ANTI-STUCK: Girando...")
+            else:
+                comando = "jumpmove 1"
+                if verbose:
+                    print(f"   ⚠️ ANTI-STUCK: Saltando...")
+        
+        # 2.6 HEURÍSTICA: Si ve madera enfrente, picar
+        # Esto ayuda al agente a aprender más rápido
+        if estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
+            # Si lleva menos de 10 pasos sin picar, seguir picando
+            if entorno.pasos_picando < 10:
+                comando = "attack 1"
+        
         # 3. EJECUTAR ACCIÓN
-        entorno.ejecutar_accion(comando)
+        entorno.ejecutar_accion(comando, duracion=0.1)
         
         # 4. OBSERVAR RESULTADO Y RECOMPENSAS DE MALMO
         if not entorno.actualizar_world_state():
@@ -199,47 +209,42 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         
         siguiente_estado = agente.obtener_estado_discretizado(obs_siguiente)
         
-        # 5. CALCULAR RECOMPENSA TOTAL
+        # 5. CALCULAR RECOMPENSA
         recompensa = entorno.calcular_recompensa(obs_siguiente, comando, recompensa_malmo)
         
-        # 6. VERIFICAR OBJETIVO
-        objetivo_completado, madera_recolectada = entorno.verificar_objetivo_completado(obs_siguiente)
+        # 6. VERIFICAR SI OBTUVO MADERA
+        madera_obtenida = entorno.verificar_madera_obtenida(obs_siguiente)
         
         # 7. ACTUALIZAR Q-TABLE
-        agente.actualizar_q(estado, accion_idx, recompensa, siguiente_estado, objetivo_completado)
+        agente.actualizar_q(estado, accion_idx, recompensa, siguiente_estado, madera_obtenida)
         
         # 8. MOSTRAR PROGRESO
-        if verbose and pasos % 30 == 0:
+        if verbose and pasos % 25 == 0:
             x = obs_siguiente.get("XPos", 0)
             y = obs_siguiente.get("YPos", 64)
             z = obs_siguiente.get("ZPos", 0)
-            
-            linea_vista = obs_siguiente.get("LineOfSight", {})
-            mirando = linea_vista.get("type", "air")
-            
+            inventario = obs_siguiente.get("inventory", [])
             print(f"   Paso {pasos:3d} | Pos: ({x:5.1f}, {y:5.1f}, {z:5.1f}) | "
-                  f"Mirando: {mirando:12s} | Madera: {madera_recolectada}/3 | R: {recompensa:+7.2f}")
+                  f"Acción: {comando:12s} | R: {recompensa:+6.2f} | Inv: {len(inventario)}")
         
-        if objetivo_completado:
-            print(f"\n   🏆 ¡¡¡OBJETIVO COMPLETADO en paso {pasos}!!!")
-            print(f"   🪵 Madera recolectada: {madera_recolectada} bloques")
+        if madera_obtenida:
+            print(f"\n   🎉 ¡MADERA OBTENIDA en paso {pasos}!")
             break
         
         pasos += 1
-        time.sleep(0.05)  # Pequeña pausa entre acciones
+        time.sleep(0.05)  # Reducir para entrenamiento más rápido
     
     # Finalizar episodio
-    agente.finalizar_episodio(madera_recolectada)
+    agente.finalizar_episodio()
     
     return {
         'pasos': pasos,
-        'exito': objetivo_completado,
-        'madera': madera_recolectada,
+        'exito': madera_obtenida,
         'recompensa_total': agente.historial_recompensas[-1]
     }
 
 
-def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl"):
+def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_madera.pkl"):
     """
     Bucle principal de entrenamiento
     
@@ -252,28 +257,18 @@ def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl
     modelo_path: str
         Ruta para guardar/cargar el modelo
     """
-    print("\n" + "="*70)
-    print("🚀 INICIANDO ENTRENAMIENTO: RECOLECCIÓN DE MADERA")
-    print("="*70)
-    print("📋 Objetivo: Entrenar agente para conseguir 3 bloques de madera")
-    print("🪓 Herramienta inicial: Pico de madera en hotbar")
-    print("="*70)
+    print("\n" + "="*60)
+    print("🚀 INICIANDO ENTRENAMIENTO DE AGENTE RL - RECOLECCIÓN DE MADERA")
+    print("="*60)
     
     # 1. INICIALIZAR MALMO
     agent_host = Malmo.AgentHost()
     
-    try:
-        agent_host.parse(sys.argv)
-    except RuntimeError as e:
-        print(f'ERROR: {e}')
-        print(agent_host.getUsage())
-        exit(1)
-    
     # 2. CREAR AGENTE
-    agente = AgenteMaderaQLearning(
-        alpha=0.15,
+    agente = AgenteQLearning(
+        alpha=0.1,
         gamma=0.95,
-        epsilon=0.4,
+        epsilon=0.4,  # Más exploración inicial para madera
         epsilon_decay=0.995
     )
     
@@ -284,7 +279,7 @@ def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl
         print("⚠ Iniciando entrenamiento desde cero")
     
     # 3. CREAR ENTORNO
-    entorno = EntornoMadera(agent_host)
+    entorno = EntornoMalmo(agent_host)
     
     # 4. CONFIGURACIÓN DE CONEXIÓN
     client_pool = Malmo.ClientPool()
@@ -292,11 +287,23 @@ def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl
     
     # 5. BUCLE DE ENTRENAMIENTO
     exitos = 0
-    madera_total_acumulada = 0
+    import random
     
     for episodio in range(num_episodios):
-        # Generar misión
-        mision_xml = obtener_mision_xml(seed=42)  # Mismo mundo para consistencia
+        # Generar misión con spawn ALEATORIO
+        if episodio < 15:
+            # Primeros episodios: mismo mundo para aprender básicos
+            seed = 789123  # Mundo con árboles
+            # Spawn aleatorio en área de 150 bloques de radio
+            spawn_x = random.uniform(-150, 150)
+            spawn_z = random.uniform(-150, 150)
+        else:
+            # Después: mundos aleatorios para generalizar
+            seed = None
+            spawn_x = None
+            spawn_z = None
+        
+        mision_xml = obtener_mision_xml(seed, spawn_x, spawn_z)
         mission = Malmo.MissionSpec(mision_xml, True)
         mission_record = Malmo.MissionRecordSpec()
         
@@ -306,7 +313,7 @@ def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl
         max_reintentos = 3
         for intento in range(max_reintentos):
             try:
-                agent_host.startMission(mission, client_pool, mission_record, 0, f"Madera_EP{episodio}")
+                agent_host.startMission(mission, client_pool, mission_record, 0, f"RL_Madera_EP{episodio}")
                 break
             except Exception as e:
                 if intento == max_reintentos - 1:
@@ -324,42 +331,35 @@ def entrenar(num_episodios=30, guardar_cada=5, modelo_path="modelo_madera_ql.pkl
         print("✓ Misión iniciada")
         
         # Ejecutar episodio
-        stats = ejecutar_episodio(agent_host, agente, entorno, 
-                                 max_pasos=800, 
-                                 verbose=(episodio % 3 == 0))
+        stats = ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=(episodio % 5 == 0))
         
         if stats['exito']:
             exitos += 1
         
-        madera_total_acumulada += stats['madera']
-        
         # Mostrar resumen
         print(f"\n📊 Resumen Episodio #{episodio + 1}")
         print(f"   Pasos: {stats['pasos']}")
-        print(f"   Éxito: {'✓ SÍ' if stats['exito'] else '✗ NO'}")
-        print(f"   Madera recolectada: {stats['madera']}/3")
+        print(f"   Éxito: {'✓' if stats['exito'] else '✗'}")
         print(f"   Recompensa total: {stats['recompensa_total']:.2f}")
-        print(f"   Tasa de éxito global: {exitos}/{episodio + 1} ({100*exitos/(episodio+1):.1f}%)")
-        print(f"   Madera promedio: {madera_total_acumulada/(episodio+1):.2f}")
+        print(f"   Tasa de éxito: {exitos}/{episodio + 1} ({100*exitos/(episodio+1):.1f}%)")
         
         # Guardar modelo periódicamente
         if (episodio + 1) % guardar_cada == 0:
             agente.guardar_modelo(modelo_path)
             agente.imprimir_estadisticas()
         
-        # Pequeña pausa entre episodios
-        time.sleep(1)
+        # Esperar entre episodios
+        time.sleep(0.5)
     
     # Guardar modelo final
-    print("\n" + "="*70)
+    print("\n" + "="*60)
     print("🏁 ENTRENAMIENTO COMPLETADO")
-    print("="*70)
+    print("="*60)
     agente.guardar_modelo(modelo_path)
     agente.imprimir_estadisticas()
     
     print(f"\n✓ Modelo final guardado en: {modelo_path}")
     print(f"✓ Episodios exitosos: {exitos}/{num_episodios} ({100*exitos/num_episodios:.1f}%)")
-    print(f"✓ Madera promedio por episodio: {madera_total_acumulada/num_episodios:.2f}")
 
 
 # ============================================================================
@@ -371,13 +371,13 @@ if __name__ == "__main__":
     print("MalmoPython importado correctamente")
     
     # Parámetros de entrenamiento
-    NUM_EPISODIOS = 30
+    NUM_EPISODIOS = 50
     MODELO_PATH = "modelo_agente_madera.pkl"
     
     try:
         entrenar(
             num_episodios=NUM_EPISODIOS,
-            guardar_cada=5,
+            guardar_cada=10,
             modelo_path=MODELO_PATH
         )
     except KeyboardInterrupt:
