@@ -25,6 +25,8 @@ class AgenteQLearning:
         2: "turn -1",     # Girar izquierda 90°
         3: "jumpmove 1",  # Saltar y avanzar
         4: "attack 1",    # Picar bloque (mantener presionado)
+        5: "pitch 1",     # Mirar arriba (para madera en altura)
+        6: "pitch -1",    # Mirar abajo (para madera en el suelo)
     }
     
     def __init__(self, 
@@ -68,10 +70,11 @@ class AgenteQLearning:
     
     def obtener_estado_discretizado(self, obs):
         """
-        Convierte las observaciones crudas en un estado discreto
+        Convierte las observaciones crudas en un estado discreto de 10 dimensiones
         
         Estado = (orientación, madera_cerca, madera_frente, distancia_madera, 
-                  obstaculo_frente, tiene_madera_inventario, altura_relativa)
+                  obstaculo_frente, aire_frente, tiene_madera_inventario, altura_relativa,
+                  mirando_madera, angulo_vertical)
         
         Parámetros:
         -----------
@@ -80,7 +83,7 @@ class AgenteQLearning:
         
         Retorna:
         --------
-        tuple: Estado discretizado
+        tuple: Estado discretizado (10 dimensiones)
         """
         # 1. Orientación (discretizada en 4 direcciones)
         yaw = obs.get("Yaw", 0)
@@ -181,9 +184,20 @@ class AgenteQLearning:
             if any(madera in tipo_bloque for madera in TIPOS_MADERA):
                 mirando_madera = 1
         
-        # Estado final: tupla inmutable para usar como clave
+        # 6. Ángulo de visión vertical (Pitch)
+        # Útil para saber si está mirando arriba (árboles altos) o abajo (items caídos)
+        pitch = obs.get("Pitch", 0)
+        if pitch < -30:
+            angulo_vertical = 2  # Mirando arriba
+        elif pitch > 30:
+            angulo_vertical = 0  # Mirando abajo
+        else:
+            angulo_vertical = 1  # Mirando al frente (horizontal)
+        
+        # Estado final: tupla inmutable para usar como clave (10 dimensiones)
         estado = (orientacion, madera_cerca, madera_frente, distancia_madera, 
-                  obstaculo_frente, aire_frente, tiene_madera, altura, mirando_madera)
+                  obstaculo_frente, aire_frente, tiene_madera, altura, 
+                  mirando_madera, angulo_vertical)
         
         return estado
     

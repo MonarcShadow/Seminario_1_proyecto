@@ -291,6 +291,19 @@ class EntornoMalmo:
             if any(madera in tipo_bloque for madera in TIPOS_MADERA_BLOQUES):
                 recompensa += 2.0
         
+        # 6.5 RECOMPENSAR PITCH (mirar arriba/abajo) cuando hay madera cerca
+        # Los árboles son verticales, entonces si detectó madera, mirar arriba/abajo es inteligente
+        if "pitch" in accion and madera_en_grid > 0:
+            recompensa += 8.0
+            print(f"   👀 Explorando verticalmente con madera cerca (+8)")
+            
+            # BONUS: Si después de pitch detecta madera en LineOfSight
+            if isinstance(line_of_sight, dict):
+                tipo_bloque = line_of_sight.get("type", "")
+                if any(madera in tipo_bloque for madera in TIPOS_MADERA_BLOQUES):
+                    recompensa += 15.0
+                    print(f"   🎯 ¡Encontró madera mirando arriba/abajo! (+15)")
+        
         # 7. INCENTIVAR INTENTOS DE MOVIMIENTO después de giros
         if len(self.historial_acciones) >= 2:
             ultima = self.historial_acciones[-1] if len(self.historial_acciones) > 0 else ""
@@ -373,7 +386,12 @@ class EntornoMalmo:
         """
         Verifica si el agente obtuvo suficiente madera en su inventario
         
-        Objetivo: 2+ bloques de madera (log/log2) O 8+ tablas (planks)
+        Objetivo: 2+ bloques de madera (log/log2/wood) O 8+ tablas (planks)
+        
+        Usa ObservationFromFullInventory que devuelve claves:
+        - InventorySlot_X_item: nombre del item en slot X
+        - InventorySlot_X_size: cantidad en slot X
+        donde X = 0-8 (hotbar), 9-44 (inventario principal)
         
         Parámetros:
         -----------
@@ -387,42 +405,63 @@ class EntornoMalmo:
         if obs is None:
             return False
         
-        inventario = obs.get("inventory", [])
-        
         total_logs = 0
         total_planks = 0
         
-        # Debug: mostrar todos los items del inventario
-        if len(inventario) > 0:
-            print(f"🎒 Inventario actual:")
-            for item in inventario:
-                item_type = item.get("type", "")
-                cantidad = item.get("quantity", 0)
-                print(f"   - {item_type}: {cantidad}")
+        items_encontrados = []
         
-        for item in inventario:
-            item_type = item.get("type", "").lower()  # Convertir a minúsculas para comparar
-            cantidad = item.get("quantity", 0)
+        # Revisar TODOS los slots (0-44: hotbar + inventario completo)
+        for slot_num in range(45):
+            item_key = f"InventorySlot_{slot_num}_item"
+            size_key = f"InventorySlot_{slot_num}_size"
             
-            # Buscar cualquier tipo de tronco (log, log2, oak_wood, etc.)
-            if "log" in item_type or "wood" in item_type:
-                # Pero no contar planks/tablas como logs
-                if "plank" not in item_type:
-                    total_logs += cantidad
-            elif "plank" in item_type:
-                total_planks += cantidad
+            # Si el slot tiene un item (no es "air")
+            if item_key in obs and obs[item_key] != "air":
+                item_name = obs[item_key]
+                item_size = obs.get(size_key, 0)
+                
+                # Guardar para debug
+                ubicacion = "HOTBAR" if slot_num < 9 else "INVENTARIO"
+                items_encontrados.append((slot_num, ubicacion, item_name, item_size))
+                
+                item_lower = item_name.lower()
+                
+                # Buscar madera: log, log2, oak_wood, spruce_wood, etc.
+                # PERO NO planks
+                if ("log" in item_lower or "wood" in item_lower) and "plank" not in item_lower:
+                    total_logs += item_size
+                
+                # Buscar planks/tablas
+                elif "plank" in item_lower:
+                    total_planks += item_size
+        
+        # Debug: Mostrar inventario solo si tiene items relevantes de madera
+        if total_logs > 0 or total_planks > 0:
+            print(f"\n🎒 INVENTARIO DETECTADO:")
+            print("-" * 60)
+            for slot, ubicacion, nombre, cantidad in items_encontrados:
+                print(f"  Slot {slot:2d} [{ubicacion:10s}]: {nombre:25s} x{cantidad}")
+            print("-" * 60)
+            print(f"  📊 TOTAL: {total_logs} logs, {total_planks} planks")
+            print("-" * 60)
         
         # Verificar si alcanzó el objetivo
         if total_logs >= 2:
-            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_logs} bloques de madera")
+            print(f"\n{'='*60}")
+            print(f"🎉🎉🎉 ¡OBJETIVO ALCANZADO! 🎉🎉🎉")
+            print(f"✅ {total_logs} bloques de madera obtenidos (objetivo: 2+)")
+            print(f"{'='*60}\n")
             return True
         elif total_planks >= 8:
-            print(f"🎉 ¡OBJETIVO ALCANZADO! {total_planks} tablas (planks)")
+            print(f"\n{'='*60}")
+            print(f"🎉🎉🎉 ¡OBJETIVO ALCANZADO! 🎉🎉🎉")
+            print(f"✅ {total_planks} tablas obtenidas (objetivo: 8+)")
+            print(f"{'='*60}\n")
             return True
         
         # Mostrar progreso si tiene algo
         if total_logs > 0 or total_planks > 0:
-            print(f"📊 Progreso: {total_logs}/2 logs, {total_planks}/8 planks")
+            print(f"📊 Progreso hacia objetivo: {total_logs}/2 logs, {total_planks}/8 planks")
         
         return False
     
