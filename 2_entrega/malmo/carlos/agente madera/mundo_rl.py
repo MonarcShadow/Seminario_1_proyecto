@@ -293,8 +293,11 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
                   f"Acción: {comando:12s} | R: {recompensa:+6.2f} | Inv: {len(inventario)}")
         
         if madera_obtenida:
-            print(f"\n   🎉 ¡OBJETIVO COMPLETADO en paso {pasos}!")
-            print(f"   ✅ Alcanzó el objetivo: 2+ bloques de madera O 8+ tablas")
+            print(f"\n{'='*60}")
+            print(f"✅ EPISODIO COMPLETADO EXITOSAMENTE")
+            print(f"   Pasos totales: {pasos}")
+            print(f"   Recompensa acumulada: {agente.recompensa_total_episodio:.2f}")
+            print(f"{'='*60}\n")
             break
         
         pasos += 1
