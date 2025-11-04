@@ -438,6 +438,11 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
         agent_host.sendCommand("chat /clear")
         time.sleep(0.5)
         
+        # Dar pico de madera al agente (según supuestos del proyecto)
+        print("⛏️  Dando pico de madera...")
+        agent_host.sendCommand("chat /give @p wooden_pickaxe 1")
+        time.sleep(0.5)
+        
         # Verificar que la misión sigue corriendo
         world_state = agent_host.getWorldState()
         if not world_state.is_mission_running:
