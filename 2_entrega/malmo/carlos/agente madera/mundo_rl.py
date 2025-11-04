@@ -117,7 +117,7 @@ def obtener_mision_xml(seed=None, spawn_x=None, spawn_z=None, mundo_plano=False)
       <!-- Generador de mundo (normal con semilla o plano para pruebas) -->
       {world_generator}
       
-      <ServerQuitFromTimeUp timeLimitMs="120000"/>  <!-- 120 segundos máximo -->
+      <ServerQuitFromTimeUp timeLimitMs="60000"/>  <!-- 60 segundos (1 min) máximo -->
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
   </ServerSection>
@@ -224,14 +224,15 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         accion_idx = agente.elegir_accion(estado)
         comando = agente.obtener_comando(accion_idx)
         
-        # 2.5 SISTEMA ANTI-STUCK: Si está muy atascado, forzar movimiento (igual que agente agua)
-        if entorno.pasos_sin_movimiento > 10:
+        # 2.5 SISTEMA ANTI-STUCK: Si está muy atascado, forzar movimiento
+        # Más agresivo: activa después de 8 pasos (antes era 10)
+        if entorno.pasos_sin_movimiento > 8:
             # Forzar secuencia de escape: girar 180° y avanzar
-            if entorno.pasos_sin_movimiento == 11:
+            if entorno.pasos_sin_movimiento == 9:
                 comando = "turn 1"
                 if verbose:
                     print(f"   ⚠️ SISTEMA ANTI-STUCK: Girando para escapar...")
-            elif entorno.pasos_sin_movimiento == 12:
+            elif entorno.pasos_sin_movimiento == 10:
                 comando = "turn 1"
             else:
                 comando = "jumpmove 1"
@@ -241,7 +242,7 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         
         # 2.6 HEURÍSTICA: Si ve madera enfrente Y YA ESTÁ PICANDO, continuar (solo si no está en anti-stuck)
         # IMPORTANTE: Solo aplicar si el agente YA eligió attack, no forzar attack en otras acciones
-        if entorno.pasos_sin_movimiento < 10:  # No interferir con anti-stuck
+        if entorno.pasos_sin_movimiento < 8:  # No interferir con anti-stuck
             # Solo mantener attack si YA está picando y sigue viendo madera
             if "attack" in comando and estado[2] == 1 and estado[8] == 1:  # madera_frente y mirando_madera
                 # Ya está picando correctamente, mantener el comando
@@ -270,6 +271,13 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         
         obs_siguiente = entorno.obtener_observacion()
         if obs_siguiente is None:
+            break
+        
+        # Verificar si el agente murió
+        is_alive = obs_siguiente.get("IsAlive", True)
+        if not is_alive:
+            print(f"\n   💀 Agente murió en paso {pasos}")
+            print(f"   ⚠️  Episodio terminado prematuramente")
             break
         
         siguiente_estado = agente.obtener_estado_discretizado(obs_siguiente)
@@ -302,6 +310,16 @@ def ejecutar_episodio(agent_host, agente, entorno, max_pasos=800, verbose=True):
         
         pasos += 1
         time.sleep(0.1)  # Pequeña pausa entre iteraciones
+    
+    # Verificar por qué terminó el episodio
+    if pasos >= max_pasos:
+        print(f"\n   ⏱️  Episodio terminó por límite de pasos ({max_pasos})")
+    elif not entorno.world_state.is_mission_running:
+        print(f"\n   ⚠️  Episodio terminó porque la misión se cerró")
+        # Verificar si fue por timeout (60 segundos)
+        tiempo_episodio = pasos * 0.1
+        if tiempo_episodio > 55:  # Cerca de 60 segundos
+            print(f"   💡 Posible timeout (60s límite, episodio duró {tiempo_episodio:.1f}s)")
     
     # Finalizar episodio
     agente.finalizar_episodio()
@@ -413,6 +431,12 @@ def entrenar(num_episodios=50, guardar_cada=10, modelo_path="modelo_agente_mader
         # Esperar más tiempo en mundo normal (tarda más en generar terreno)
         print("⏳ Esperando generación de terreno...")
         time.sleep(5)
+        
+        # LIMPIAR INVENTARIO del episodio anterior
+        # Esto asegura que el agente empiece sin items
+        print("🧹 Limpiando inventario...")
+        agent_host.sendCommand("chat /clear")
+        time.sleep(0.5)
         
         # Verificar que la misión sigue corriendo
         world_state = agent_host.getWorldState()
