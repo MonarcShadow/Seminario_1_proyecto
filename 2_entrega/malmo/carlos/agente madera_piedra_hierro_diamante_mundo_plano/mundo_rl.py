@@ -315,7 +315,7 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     # Variables del episodio
     pasos = 0
     recompensa_acumulada = 0.0
-    max_pasos = 2000  # ~16 minutos con 0.5s por paso
+    max_pasos = 200  # ~2 minutos con 0.6s por paso (200 * 0.6 = 120s)
     objetivo_completado = False
     
     pasos_sin_movimiento_consecutivos = 0

@@ -22,15 +22,17 @@ class AgenteQLearningProgresivo:
     4. Recolectar 1 diamante (con pico de hierro)
     """
     
-    # Acciones disponibles
+    # Acciones disponibles (balanceadas para mejor exploración)
     ACCIONES = {
         0: "move 1",      # Avanzar
-        1: "turn 1",      # Girar derecha 90°
-        2: "turn -1",     # Girar izquierda 90°
-        3: "jumpmove 1",  # Saltar y avanzar
-        4: "attack 1",    # Picar bloque
-        5: "pitch 1",     # Mirar arriba
-        6: "pitch -1",    # Mirar abajo
+        1: "move 1",      # Avanzar (duplicado para favorecer movimiento)
+        2: "turn 0.5",    # Girar derecha 45° (más suave)
+        3: "turn -0.5",   # Girar izquierda 45° (más suave)
+        4: "jumpmove 1",  # Saltar y avanzar
+        5: "attack 1",    # Picar bloque
+        6: "attack 1",    # Picar (duplicado para favorecer ataque)
+        7: "pitch 0.3",   # Mirar poco arriba (para bloques elevados)
+        8: "pitch -0.3",  # Mirar poco abajo (para bloques bajos)
     }
     
     # Fases del objetivo

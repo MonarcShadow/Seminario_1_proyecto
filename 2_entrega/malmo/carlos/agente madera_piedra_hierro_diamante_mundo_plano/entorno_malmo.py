@@ -142,8 +142,8 @@ class EntornoMalmoProgresivo:
         castigo_holgazan = self._castigo_holgazaneria(obs, accion, fase_actual)
         recompensa += castigo_holgazan * mult
         
-        # 6. RECOMPENSA POR USAR PITCH (buscar en altura)
-        if accion in [5, 6]:  # pitch up/down
+        # 6. RECOMPENSA POR USAR PITCH (buscar en altura) - SOLO SI ES ÚTIL
+        if accion in [7, 8]:  # pitch up/down (ahora son acciones 7 y 8)
             recompensa_pitch = self._recompensa_por_pitch(obs, fase_actual)
             recompensa += recompensa_pitch * mult
         
@@ -286,7 +286,7 @@ class EntornoMalmoProgresivo:
         return recompensa
     
     def _recompensa_por_movimiento(self, obs, accion):
-        """Recompensa por moverse efectivamente"""
+        """Recompensa por moverse efectivamente (SOLO SI NO ESTÁ CERCA DEL OBJETIVO)"""
         recompensa = 0.0
         
         # Solo evaluar en acciones de movimiento
@@ -306,17 +306,13 @@ class EntornoMalmoProgresivo:
             
             if dist < 0.3:  # No se movió significativamente
                 self.pasos_sin_movimiento += 1
-                if self.pasos_sin_movimiento > 3:
-                    recompensa = -1.0  # Castigo por quedarse atascado
+                if self.pasos_sin_movimiento > 5:
+                    recompensa = -2.0  # Castigo aumentado por quedarse atascado
             else:
                 self.pasos_sin_movimiento = 0
-                # Pequeña recompensa por movimiento efectivo
-                recompensa = {
-                    0: 5.0,
-                    1: 6.0,
-                    2: 8.0,
-                    3: 10.0,
-                }.get(self.fase_actual, 5.0)
+                # NO dar recompensa por movimiento genérico
+                # Solo la proximidad al objetivo da recompensa
+                recompensa = 0.0
         
         self.posicion_previa = pos_actual
         return recompensa
@@ -365,19 +361,18 @@ class EntornoMalmoProgresivo:
         return castigo
     
     def _recompensa_por_pitch(self, obs, fase):
-        """Recompensa por usar pitch cerca del objetivo"""
+        """Recompensa por usar pitch SOLO cuando hay objetivo en altura cerca"""
         recompensa = 0.0
         
-        # Verificar si hay objetivo cerca
+        # Verificar si hay objetivo cerca VERTICALMENTE
         materiales_objetivo = self._obtener_materiales_objetivo(fase)
         grid = obs.get('floor3x3', [])
         
-        objetivo_cerca = False
         objetivo_encontrado_vertical = False
         
         if len(grid) >= 125:
-            # Verificar capas verticales
-            for y_offset in [0, 1, 3, 4]:  # Capas arriba y abajo del centro
+            # Verificar SOLO capas verticales (no la capa central horizontal)
+            for y_offset in [0, 1, 3, 4]:  # Capas arriba y abajo del centro (excluye 2)
                 for x in range(5):
                     for z in range(5):
                         idx = y_offset * 25 + z * 5 + x
@@ -386,17 +381,17 @@ class EntornoMalmoProgresivo:
                         
                         bloque = grid[idx]
                         if bloque in materiales_objetivo:
+                            # Solo recompensar si está MUY cerca horizontalmente
                             dist_horizontal = abs(x - 2) + abs(z - 2)
-                            if dist_horizontal <= 2:
-                                objetivo_cerca = True
-                                if y_offset in [0, 1, 3, 4]:  # No en capa central
-                                    objetivo_encontrado_vertical = True
+                            if dist_horizontal <= 1:  # Más estricto: solo 1 bloque
+                                objetivo_encontrado_vertical = True
+                                break
         
-        if objetivo_cerca:
-            recompensa = 8.0
-        
+        # SOLO recompensa si realmente hay un objetivo vertical cerca
         if objetivo_encontrado_vertical:
-            recompensa += 15.0  # Bonus por encontrar objetivo arriba/abajo
+            recompensa = 10.0  # Recompensa moderada solo cuando es útil
+        else:
+            recompensa = 0.0  # NO recompensar pitch sin razón
         
         return recompensa
     
