@@ -208,7 +208,7 @@ def generar_mundo_plano_xml(seed=None):
                 {drawing_xml}
             </DrawingDecorator>
             
-            <ServerQuitFromTimeUp timeLimitMs="300000"/>
+            <ServerQuitFromTimeUp timeLimitMs="120000"/>
             <ServerQuitWhenAnyAgentFinishes/>
         </ServerHandlers>
     </ServerSection>
@@ -315,7 +315,7 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     # Variables del episodio
     pasos = 0
     recompensa_acumulada = 0.0
-    max_pasos = 1000  # 5 minutos timeout
+    max_pasos = 2000  # ~16 minutos con 0.5s por paso
     objetivo_completado = False
     
     pasos_sin_movimiento_consecutivos = 0
@@ -325,89 +325,104 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     print("🎮 Comenzando episodio...\n")
     
     while world_state.is_mission_running and pasos < max_pasos:
+        # Esperar hasta tener observaciones
+        while world_state.is_mission_running:
+            time.sleep(0.1)
+            world_state = agent_host.getWorldState()
+            if world_state.number_of_observations_since_last_state > 0:
+                break
+        
+        if not world_state.is_mission_running:
+            break
+            
         pasos += 1
         
         # Obtener observaciones
-        if world_state.number_of_observations_since_last_state > 0:
-            msg = world_state.observations[-1].text
-            obs = json.loads(msg)
-            
-            # Obtener fase actual
-            fase_actual = entorno.fase_actual
-            
-            # Obtener estado
-            estado = agente.obtener_estado_discretizado(obs, fase_actual)
-            
-            # Elegir acción
-            accion = agente.elegir_accion(estado, fase_actual)
-            
-            # Ejecutar acción
-            comando = agente.ACCIONES[accion]
-            agent_host.sendCommand(comando)
-            time.sleep(0.05)
-            
-            # Esperar siguiente observación
+        msg = world_state.observations[-1].text
+        obs = json.loads(msg)
+        
+        # Obtener fase actual
+        fase_actual = entorno.fase_actual
+        
+        # Obtener estado
+        estado = agente.obtener_estado_discretizado(obs, fase_actual)
+        
+        # Elegir acción
+        accion = agente.elegir_accion(estado, fase_actual)
+        
+        # Ejecutar acción
+        comando = agente.ACCIONES[accion]
+        agent_host.sendCommand(comando)
+        
+        # Esperar a que se ejecute el comando
+        time.sleep(0.5)
+        
+        # Obtener nueva observación después del comando
+        world_state = agent_host.getWorldState()
+        while world_state.is_mission_running:
             time.sleep(0.1)
             world_state = agent_host.getWorldState()
-            
-            # Obtener nueva observación
             if world_state.number_of_observations_since_last_state > 0:
-                msg = world_state.observations[-1].text
-                obs_nueva = json.loads(msg)
-                
-                # Calcular recompensa
-                recompensa = entorno.calcular_recompensa(obs_nueva, accion, fase_actual)
-                recompensa_acumulada += recompensa
-                
-                # Obtener siguiente estado
-                siguiente_estado = agente.obtener_estado_discretizado(obs_nueva, fase_actual)
-                
-                # Verificar progresión de fase
-                cambio_fase = entorno.verificar_progresion_fase(obs_nueva)
-                
-                # Actualizar Q-table
-                agente.actualizar_q(estado, accion, recompensa, siguiente_estado, fase_actual, done=False)
-                
-                # Verificar objetivo final completado
-                if entorno.fase_actual == 3 and entorno.materiales_recolectados['diamante'] >= 1:
-                    objetivo_completado = True
-                    print("\n💎 ¡OBJETIVO FINAL ALCANZADO!")
-                    break
-                
-                # Anti-stuck más agresivo
-                xpos = obs_nueva.get('XPos', 0)
-                zpos = obs_nueva.get('ZPos', 0)
-                pos_actual = (round(xpos, 1), round(zpos, 1))
-                
-                if posicion_anterior is not None:
-                    if pos_actual == posicion_anterior:
-                        pasos_sin_movimiento_consecutivos += 1
-                    else:
-                        pasos_sin_movimiento_consecutivos = 0
-                
-                posicion_anterior = pos_actual
-                
-                # Si está muy atascado, hacer acción aleatoria
-                if pasos_sin_movimiento_consecutivos > 15:
-                    agent_host.sendCommand("turn 1")
-                    time.sleep(0.1)
-                    agent_host.sendCommand("jumpmove 1")
-                    time.sleep(0.2)
-                    pasos_sin_movimiento_consecutivos = 0
-                
-                # Mostrar progreso cada 50 pasos
-                if pasos % 50 == 0:
-                    fase_num, fase_nombre = entorno.obtener_fase_actual()
-                    progreso = entorno.obtener_progreso()
-                    print(f"\n📊 Paso {pasos} | Fase: {fase_nombre} | Recompensa: {recompensa_acumulada:.1f}")
-                    print(f"   Progreso: M:{progreso['madera']} P:{progreso['piedra']} H:{progreso['hierro']} D:{progreso['diamante']}")
-            
-            # Verificar muerte
-            if 'IsAlive' in obs and not obs['IsAlive']:
-                print("\n💀 Agente murió")
                 break
         
-        world_state = agent_host.getWorldState()
+        if not world_state.is_mission_running:
+            break
+        
+        # Procesar nueva observación
+        msg = world_state.observations[-1].text
+        obs_nueva = json.loads(msg)
+        
+        # Calcular recompensa
+        recompensa = entorno.calcular_recompensa(obs_nueva, accion, fase_actual)
+        recompensa_acumulada += recompensa
+        
+        # Obtener siguiente estado
+        siguiente_estado = agente.obtener_estado_discretizado(obs_nueva, fase_actual)
+        
+        # Verificar progresión de fase
+        cambio_fase = entorno.verificar_progresion_fase(obs_nueva)
+        
+        # Actualizar Q-table
+        agente.actualizar_q(estado, accion, recompensa, siguiente_estado, fase_actual, done=False)
+        
+        # Verificar objetivo final completado
+        if entorno.fase_actual == 3 and entorno.materiales_recolectados['diamante'] >= 1:
+            objetivo_completado = True
+            print("\n💎 ¡OBJETIVO FINAL ALCANZADO!")
+            break
+        
+        # Anti-stuck más agresivo
+        xpos = obs_nueva.get('XPos', 0)
+        zpos = obs_nueva.get('ZPos', 0)
+        pos_actual = (round(xpos, 1), round(zpos, 1))
+        
+        if posicion_anterior is not None:
+            if pos_actual == posicion_anterior:
+                pasos_sin_movimiento_consecutivos += 1
+            else:
+                pasos_sin_movimiento_consecutivos = 0
+        
+        posicion_anterior = pos_actual
+        
+        # Si está muy atascado, hacer acción aleatoria
+        if pasos_sin_movimiento_consecutivos > 15:
+            agent_host.sendCommand("turn 1")
+            time.sleep(0.1)
+            agent_host.sendCommand("jumpmove 1")
+            time.sleep(0.2)
+            pasos_sin_movimiento_consecutivos = 0
+        
+        # Mostrar progreso cada 50 pasos
+        if pasos % 50 == 0:
+            fase_num, fase_nombre = entorno.obtener_fase_actual()
+            progreso = entorno.obtener_progreso()
+            print(f"\n📊 Paso {pasos} | Fase: {fase_nombre} | Recompensa: {recompensa_acumulada:.1f}")
+            print(f"   Progreso: M:{progreso['madera']} P:{progreso['piedra']} H:{progreso['hierro']} D:{progreso['diamante']}")
+        
+        # Verificar muerte
+        if 'IsAlive' in obs_nueva and not obs_nueva['IsAlive']:
+            print("\n💀 Agente murió")
+            break
     
     # Fin del episodio - Esperar a que termine la misión
     print(f"\n{'='*60}")
