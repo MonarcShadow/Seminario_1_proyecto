@@ -154,8 +154,8 @@ def generar_mundo_plano_xml(seed=None):
     # Construir XML de DrawingDecorator
     drawing_xml = ""
     
-    # Suelo de piedra (50x50)
-    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="3" z1="{-radio}" x2="{radio}" y2="3" z2="{radio}" type="stone"/>\n'
+    # Suelo de OBSIDIANA (50x50) - para no confundir con piedra objetivo
+    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="3" z1="{-radio}" x2="{radio}" y2="3" z2="{radio}" type="obsidian"/>\n'
     
     # Muro de obsidiana perimetral (altura 1-10)
     # Muro Norte
@@ -269,8 +269,9 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     print(f"EPISODIO {episodio}")
     print(f"{'='*60}\n")
     
-    # Generar misión
-    mission_xml = generar_mundo_plano_xml(seed=seed)
+    # Generar misión con seed diferente por episodio
+    episodio_seed = seed + episodio if seed else None  # Varía la seed por episodio
+    mission_xml = generar_mundo_plano_xml(seed=episodio_seed)
     mission = MalmoPython.MissionSpec(mission_xml, True)
     mission_record = MalmoPython.MissionRecordSpec()
     
