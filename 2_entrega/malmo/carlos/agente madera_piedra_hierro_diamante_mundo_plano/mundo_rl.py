@@ -256,6 +256,81 @@ def generar_mundo_plano_xml(seed=None):
     return xml
 
 
+def seleccionar_mejor_herramienta(agent_host, obs, fase_actual, grid):
+    """
+    Selecciona y equipa automáticamente la mejor herramienta disponible
+    según el material que está frente al agente
+    """
+    # Detectar qué material está frente (posición central del grid)
+    material_frente = None
+    if len(grid) >= 125:
+        # Centro del grid 5x5x5 (índice 62)
+        idx_centro = 2 * 25 + 2 * 5 + 2  # y=2, z=2, x=2
+        if idx_centro < len(grid):
+            material_frente = grid[idx_centro]
+    
+    # Obtener inventario
+    inventario = obs.get('Hotbar', [])
+    
+    # Determinar mejor herramienta según el material
+    herramienta_objetivo = None
+    
+    # Para MADERA: usar hacha si está disponible, sino pico
+    if material_frente in ['log', 'log2', 'planks']:
+        # Buscar hacha (prioridad: hierro > piedra > madera)
+        for item in inventario:
+            item_type = item.get('type', '')
+            if 'iron_axe' in item_type:
+                herramienta_objetivo = 'iron_axe'
+                break
+            elif 'stone_axe' in item_type:
+                herramienta_objetivo = 'stone_axe'
+            elif 'wooden_axe' in item_type and not herramienta_objetivo:
+                herramienta_objetivo = 'wooden_axe'
+    
+    # Para PIEDRA: usar pico de madera o mejor
+    elif material_frente in ['stone', 'cobblestone']:
+        for item in inventario:
+            item_type = item.get('type', '')
+            if 'iron_pickaxe' in item_type:
+                herramienta_objetivo = 'iron_pickaxe'
+                break
+            elif 'stone_pickaxe' in item_type:
+                herramienta_objetivo = 'stone_pickaxe'
+            elif 'wooden_pickaxe' in item_type and not herramienta_objetivo:
+                herramienta_objetivo = 'wooden_pickaxe'
+    
+    # Para HIERRO: usar pico de piedra o mejor
+    elif material_frente in ['iron_ore']:
+        for item in inventario:
+            item_type = item.get('type', '')
+            if 'iron_pickaxe' in item_type:
+                herramienta_objetivo = 'iron_pickaxe'
+                break
+            elif 'stone_pickaxe' in item_type and not herramienta_objetivo:
+                herramienta_objetivo = 'stone_pickaxe'
+    
+    # Para DIAMANTE: usar pico de hierro
+    elif material_frente in ['diamond_ore']:
+        for item in inventario:
+            item_type = item.get('type', '')
+            if 'iron_pickaxe' in item_type:
+                herramienta_objetivo = 'iron_pickaxe'
+                break
+    
+    # Equipar herramienta si se encontró
+    if herramienta_objetivo:
+        # Buscar slot de la herramienta
+        for idx, item in enumerate(inventario):
+            if herramienta_objetivo in item.get('type', ''):
+                agent_host.sendCommand(f"hotbar.{idx + 1} 1")  # Equipar slot
+                agent_host.sendCommand(f"hotbar.{idx + 1} 0")
+                time.sleep(0.1)
+                return True
+    
+    return False
+
+
 def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     """
     Ejecuta un episodio completo de entrenamiento en mundo plano
@@ -305,9 +380,12 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     agent_host.sendCommand("chat /clear")
     time.sleep(0.5)
     
-    # DAR PICO DE MADERA
+    # DAR HERRAMIENTAS INICIALES
     print("⛏️  Dando pico de madera inicial...")
     agent_host.sendCommand("chat /give @p wooden_pickaxe 1")
+    time.sleep(0.3)
+    print("🪓 Dando hacha de madera inicial...")
+    agent_host.sendCommand("chat /give @p wooden_axe 1")
     time.sleep(0.5)
     
     # Resetear entorno
@@ -350,6 +428,11 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
         
         # Elegir acción
         accion = agente.elegir_accion(estado, fase_actual)
+        
+        # Si va a atacar, seleccionar mejor herramienta primero
+        if accion in [5, 6]:  # Acciones de ataque
+            grid = obs.get('floor3x3', [])
+            seleccionar_mejor_herramienta(agent_host, obs, fase_actual, grid)
         
         # Ejecutar acción
         comando = agente.ACCIONES[accion]

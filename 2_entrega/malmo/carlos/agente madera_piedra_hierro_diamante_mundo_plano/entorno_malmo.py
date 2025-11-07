@@ -157,38 +157,49 @@ class EntornoMalmoProgresivo:
         """Detecta si se obtuvo material objetivo en inventario"""
         recompensa = 0.0
         
-        # Contar material actual en inventario
+        # ACTUALIZAR CONTADORES DE TODOS LOS MATERIALES (para tracking)
+        # Esto asegura que siempre veamos el progreso real
+        self.materiales_recolectados['madera'] = self._contar_madera(obs)
+        self.materiales_recolectados['piedra'] = self._contar_piedra(obs)
+        self.materiales_recolectados['hierro'] = self._contar_hierro(obs)
+        self.materiales_recolectados['diamante'] = self._contar_diamante(obs)
+        
+        # DAR RECOMPENSA SOLO POR MATERIAL DE LA FASE ACTUAL
         if fase == 0:  # MADERA
-            nuevo_count = self._contar_madera(obs)
-            if nuevo_count > self.materiales_recolectados['madera']:
-                diff = nuevo_count - self.materiales_recolectados['madera']
+            nuevo_count = self.materiales_recolectados['madera']
+            contador_previo = getattr(self, '_madera_previo', 0)
+            if nuevo_count > contador_previo:
+                diff = nuevo_count - contador_previo
                 recompensa = 200.0 * diff
                 print(f"🌲 +{diff} MADERA obtenida! (Total: {nuevo_count}/3) [+{recompensa}]")
-                self.materiales_recolectados['madera'] = nuevo_count
+            self._madera_previo = nuevo_count
         
         elif fase == 1:  # PIEDRA
-            nuevo_count = self._contar_piedra(obs)
-            if nuevo_count > self.materiales_recolectados['piedra']:
-                diff = nuevo_count - self.materiales_recolectados['piedra']
+            nuevo_count = self.materiales_recolectados['piedra']
+            contador_previo = getattr(self, '_piedra_previo', 0)
+            if nuevo_count > contador_previo:
+                diff = nuevo_count - contador_previo
                 recompensa = 250.0 * diff
                 print(f"🪨 +{diff} PIEDRA obtenida! (Total: {nuevo_count}/3) [+{recompensa}]")
-                self.materiales_recolectados['piedra'] = nuevo_count
+            self._piedra_previo = nuevo_count
         
         elif fase == 2:  # HIERRO
-            nuevo_count = self._contar_hierro(obs)
-            if nuevo_count > self.materiales_recolectados['hierro']:
-                diff = nuevo_count - self.materiales_recolectados['hierro']
+            nuevo_count = self.materiales_recolectados['hierro']
+            contador_previo = getattr(self, '_hierro_previo', 0)
+            if nuevo_count > contador_previo:
+                diff = nuevo_count - contador_previo
                 recompensa = 300.0 * diff
                 print(f"⚙️ +{diff} HIERRO obtenido! (Total: {nuevo_count}/3) [+{recompensa}]")
-                self.materiales_recolectados['hierro'] = nuevo_count
+            self._hierro_previo = nuevo_count
         
         elif fase == 3:  # DIAMANTE
-            nuevo_count = self._contar_diamante(obs)
-            if nuevo_count > self.materiales_recolectados['diamante']:
-                diff = nuevo_count - self.materiales_recolectados['diamante']
+            nuevo_count = self.materiales_recolectados['diamante']
+            contador_previo = getattr(self, '_diamante_previo', 0)
+            if nuevo_count > contador_previo:
+                diff = nuevo_count - contador_previo
                 recompensa = 500.0 * diff
                 print(f"💎 ¡¡¡DIAMANTE OBTENIDO!!! [+{recompensa}]")
-                self.materiales_recolectados['diamante'] = nuevo_count
+            self._diamante_previo = nuevo_count
         
         return recompensa
     
@@ -635,6 +646,12 @@ class EntornoMalmoProgresivo:
             'hierro': 0,
             'diamante': 0,
         }
+        # Contadores previos para tracking de recompensas
+        self._madera_previo = 0
+        self._piedra_previo = 0
+        self._hierro_previo = 0
+        self._diamante_previo = 0
+        
         self.pico_piedra_dado = False
         self.pico_hierro_dado = False
         self.posicion_previa = (0, 0, 0)
