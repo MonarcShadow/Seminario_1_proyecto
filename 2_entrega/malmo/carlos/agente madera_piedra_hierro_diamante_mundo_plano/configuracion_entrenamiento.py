@@ -204,7 +204,7 @@ EPISODIO_CONFIG = {
     'delay_observaciones': 0.1,
     
     # Mostrar progreso cada N pasos
-    'mostrar_progreso_cada': 10,
+    'mostrar_progreso_cada': 50,
 }
 
 
