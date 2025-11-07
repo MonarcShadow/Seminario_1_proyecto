@@ -394,7 +394,7 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     # Variables del episodio
     pasos = 0
     recompensa_acumulada = 0.0
-    max_pasos = 200  # ~2 minutos con 0.6s por paso (200 * 0.6 = 120s)
+    max_pasos = 200  # ~2.0 minutos con 0.6s por paso
     objetivo_completado = False
     
     pasos_sin_movimiento_consecutivos = 0
@@ -496,8 +496,8 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
             time.sleep(0.2)
             pasos_sin_movimiento_consecutivos = 0
         
-        # Mostrar progreso cada 50 pasos
-        if pasos % 50 == 0:
+        # Mostrar progreso cada 10 pasos
+        if pasos % 10 == 0:
             fase_num, fase_nombre = entorno.obtener_fase_actual()
             progreso = entorno.obtener_progreso()
             print(f"\n📊 Paso {pasos} | Fase: {fase_nombre} | Recompensa: {recompensa_acumulada:.1f}")

@@ -11,6 +11,9 @@ Autor: Sistema de IA
 Fecha: Noviembre 2025
 """
 
+import os
+import re
+
 # ============================================================================
 # PARÁMETROS DE ENTRENAMIENTO Q-LEARNING
 # ============================================================================
@@ -201,7 +204,7 @@ EPISODIO_CONFIG = {
     'delay_observaciones': 0.1,
     
     # Mostrar progreso cada N pasos
-    'mostrar_progreso_cada': 50,
+    'mostrar_progreso_cada': 10,
 }
 
 
@@ -282,3 +285,343 @@ CÓMO AJUSTAR PARA DIFERENTES COMPORTAMIENTOS:
    - Disminuir PASOS_PARA_CASTIGO_MOVIMIENTO (castiga antes)
    - Aumentar recompensa por proximidad (incentivo para moverse hacia objetivo)
 """
+
+
+# ============================================================================
+# FUNCIONES PARA APLICAR CONFIGURACIÓN
+# ============================================================================
+
+def aplicar_configuracion():
+    """
+    Aplica la configuración a los archivos de entrenamiento
+    Modifica directamente los valores en los archivos Python
+    """
+    print("="*70)
+    print("🔧 APLICANDO CONFIGURACIÓN AL SISTEMA DE ENTRENAMIENTO")
+    print("="*70)
+    
+    directorio_actual = os.path.dirname(os.path.abspath(__file__))
+    
+    # Aplicar a agente_rl.py
+    aplicar_a_agente_rl(directorio_actual)
+    
+    # Aplicar a entorno_malmo.py
+    aplicar_a_entorno_malmo(directorio_actual)
+    
+    # Aplicar a mundo_rl.py
+    aplicar_a_mundo_rl(directorio_actual)
+    
+    print("\n" + "="*70)
+    print("✅ CONFIGURACIÓN APLICADA EXITOSAMENTE")
+    print("="*70)
+    print("\n💡 Ahora puedes ejecutar el entrenamiento:")
+    print("   malmoenv && python3 mundo_rl.py 10")
+    print()
+
+
+def aplicar_a_agente_rl(directorio):
+    """Aplica configuración a agente_rl.py"""
+    archivo = os.path.join(directorio, 'agente_rl.py')
+    
+    print(f"\n📝 Actualizando {archivo}...")
+    
+    with open(archivo, 'r', encoding='utf-8') as f:
+        contenido = f.read()
+    
+    # Actualizar parámetros de Q-Learning en __init__
+    contenido = re.sub(
+        r'alpha=[\d.]+',
+        f"alpha={PARAMETROS_QLEARNING['alpha']}",
+        contenido
+    )
+    contenido = re.sub(
+        r'gamma=[\d.]+',
+        f"gamma={PARAMETROS_QLEARNING['gamma']}",
+        contenido
+    )
+    contenido = re.sub(
+        r'epsilon=[\d.]+',
+        f"epsilon={PARAMETROS_QLEARNING['epsilon_inicial']}",
+        contenido
+    )
+    contenido = re.sub(
+        r'epsilon_min=[\d.]+',
+        f"epsilon_min={PARAMETROS_QLEARNING['epsilon_min']}",
+        contenido
+    )
+    contenido = re.sub(
+        r'epsilon_decay=[\d.]+',
+        f"epsilon_decay={PARAMETROS_QLEARNING['epsilon_decay']}",
+        contenido
+    )
+    
+    # Actualizar parámetros por fase
+    for fase, params in PARAMETROS_POR_FASE.items():
+        # Buscar y reemplazar el diccionario de parámetros por fase
+        patron = rf'{fase}: {{"alpha": [\d.]+, "epsilon": [\d.]+, "recompensa_mult": [\d.]+ }}'
+        reemplazo = f'{fase}: {{"alpha": {params["alpha"]}, "epsilon": {params["epsilon"]}, "recompensa_mult": {params["recompensa_mult"]}}}'
+        contenido = re.sub(patron, reemplazo, contenido)
+    
+    with open(archivo, 'w', encoding='utf-8') as f:
+        f.write(contenido)
+    
+    print("   ✓ Parámetros Q-Learning actualizados")
+    print("   ✓ Parámetros por fase actualizados")
+
+
+def aplicar_a_entorno_malmo(directorio):
+    """Aplica configuración a entorno_malmo.py"""
+    archivo = os.path.join(directorio, 'entorno_malmo.py')
+    
+    print(f"\n📝 Actualizando {archivo}...")
+    
+    with open(archivo, 'r', encoding='utf-8') as f:
+        contenido = f.read()
+    
+    # Actualizar multiplicadores de fase
+    for fase, mult in MULTIPLICADOR_FASE.items():
+        patron = rf'{fase}: [\d.]+,\s+# (MADERA|PIEDRA|HIERRO|DIAMANTE)'
+        reemplazo = rf'{fase}: {mult},   # \1'
+        contenido = re.sub(patron, reemplazo, contenido)
+    
+    # Actualizar recompensas por material obtenido
+    contenido = re.sub(
+        r'recompensa = 200\.0 \* diff',
+        f'recompensa = {RECOMPENSA_MATERIAL_OBTENIDO["madera"]} * diff',
+        contenido
+    )
+    contenido = re.sub(
+        r'recompensa = 250\.0 \* diff',
+        f'recompensa = {RECOMPENSA_MATERIAL_OBTENIDO["piedra"]} * diff',
+        contenido
+    )
+    contenido = re.sub(
+        r'recompensa = 300\.0 \* diff',
+        f'recompensa = {RECOMPENSA_MATERIAL_OBTENIDO["hierro"]} * diff',
+        contenido
+    )
+    contenido = re.sub(
+        r'recompensa = 500\.0 \* diff',
+        f'recompensa = {RECOMPENSA_MATERIAL_OBTENIDO["diamante"]} * diff',
+        contenido
+    )
+    
+    # Actualizar recompensas de ataque correcto
+    patron_ataque = r'recompensas_ataque = \{[^}]+\}'
+    reemplazo_ataque = f'''recompensas_ataque = {{
+                    0: {RECOMPENSA_ATAQUE_CORRECTO[0]},   # Picar madera
+                    1: {RECOMPENSA_ATAQUE_CORRECTO[1]},   # Picar piedra
+                    2: {RECOMPENSA_ATAQUE_CORRECTO[2]},   # Picar hierro
+                    3: {RECOMPENSA_ATAQUE_CORRECTO[3]},  # Picar diamante
+                }}'''
+    contenido = re.sub(patron_ataque, reemplazo_ataque, contenido)
+    
+    # Actualizar castigos por herramienta incorrecta
+    patron_castigo = r'castigos_herramienta = \{[^}]+\}'
+    reemplazo_castigo = f'''castigos_herramienta = {{
+                    1: {CASTIGO_HERRAMIENTA_INCORRECTA[1]},  # Piedra sin pico de madera
+                    2: {CASTIGO_HERRAMIENTA_INCORRECTA[2]},  # Hierro sin pico de piedra
+                    3: {CASTIGO_HERRAMIENTA_INCORRECTA[3]}, # Diamante sin pico de hierro
+                }}'''
+    contenido = re.sub(patron_castigo, reemplazo_castigo, contenido)
+    
+    # Actualizar recompensas de proximidad muy cerca
+    patron_muy_cerca = r'recompensas_muy_cerca = \{[^}]+\}'
+    reemplazo_muy_cerca = f'''recompensas_muy_cerca = {{
+                0: {RECOMPENSA_OBJETIVO_MUY_CERCA[0]},  # Madera muy cerca
+                1: {RECOMPENSA_OBJETIVO_MUY_CERCA[1]},  # Piedra muy cerca
+                2: {RECOMPENSA_OBJETIVO_MUY_CERCA[2]},  # Hierro muy cerca
+                3: {RECOMPENSA_OBJETIVO_MUY_CERCA[3]},  # Diamante muy cerca
+            }}'''
+    contenido = re.sub(patron_muy_cerca, reemplazo_muy_cerca, contenido)
+    
+    # Actualizar recompensas de proximidad cerca
+    patron_cerca = r'recompensas_cerca = \{[^}]+\}'
+    reemplazo_cerca = f'''recompensas_cerca = {{
+                0: {RECOMPENSA_OBJETIVO_CERCA[0]},
+                1: {RECOMPENSA_OBJETIVO_CERCA[1]},
+                2: {RECOMPENSA_OBJETIVO_CERCA[2]},
+                3: {RECOMPENSA_OBJETIVO_CERCA[3]},
+            }}'''
+    contenido = re.sub(patron_cerca, reemplazo_cerca, contenido)
+    
+    # Actualizar castigo sin movimiento
+    contenido = re.sub(
+        r'recompensa = -[\d.]+  # Castigo (aumentado )?por quedarse atascado',
+        f'recompensa = {CASTIGO_SIN_MOVIMIENTO}  # Castigo aumentado por quedarse atascado',
+        contenido
+    )
+    
+    # Actualizar pasos para castigo
+    contenido = re.sub(
+        r'if self\.pasos_sin_movimiento > \d+:',
+        f'if self.pasos_sin_movimiento > {PASOS_PARA_CASTIGO_MOVIMIENTO}:',
+        contenido
+    )
+    
+    # Actualizar recompensa por pitch útil
+    contenido = re.sub(
+        r"recompensa = 10\.0  # Recompensa moderada solo cuando es útil",
+        f"recompensa = {RECOMPENSA_PITCH_UTIL}  # Recompensa moderada solo cuando es útil",
+        contenido
+    )
+    
+    with open(archivo, 'w', encoding='utf-8') as f:
+        f.write(contenido)
+    
+    print("   ✓ Multiplicadores de fase actualizados")
+    print("   ✓ Recompensas por material actualizadas")
+    print("   ✓ Recompensas de ataque actualizadas")
+    print("   ✓ Recompensas de proximidad actualizadas")
+    print("   ✓ Castigos actualizados")
+
+
+def aplicar_a_mundo_rl(directorio):
+    """Aplica configuración a mundo_rl.py"""
+    archivo = os.path.join(directorio, 'mundo_rl.py')
+    
+    print(f"\n📝 Actualizando {archivo}...")
+    
+    with open(archivo, 'r', encoding='utf-8') as f:
+        contenido = f.read()
+    
+    # Actualizar max_pasos
+    contenido = re.sub(
+        r'max_pasos = \d+  # [^\n]+',
+        f'max_pasos = {EPISODIO_CONFIG["max_pasos"]}  # ~{EPISODIO_CONFIG["max_pasos"]*0.6/60:.1f} minutos con 0.6s por paso',
+        contenido
+    )
+    
+    # Actualizar timeout de misión
+    contenido = re.sub(
+        r'<ServerQuitFromTimeUp timeLimitMs="\d+"/>',
+        f'<ServerQuitFromTimeUp timeLimitMs="{EPISODIO_CONFIG["timeout_mision_ms"]}"/>',
+        contenido
+    )
+    
+    # Actualizar delay entre comandos
+    contenido = re.sub(
+        r'time\.sleep\(0\.5\)  # Esperar a que se ejecute el comando',
+        f'time.sleep({EPISODIO_CONFIG["delay_entre_comandos"]})  # Esperar a que se ejecute el comando',
+        contenido
+    )
+    
+    # Actualizar mostrar progreso cada N pasos
+    contenido = re.sub(
+        r'# Mostrar progreso cada \d+ pasos\n        if pasos % \d+ == 0:',
+        f'# Mostrar progreso cada {EPISODIO_CONFIG["mostrar_progreso_cada"]} pasos\n        if pasos % {EPISODIO_CONFIG["mostrar_progreso_cada"]} == 0:',
+        contenido
+    )
+    
+    # Actualizar cantidad de materiales
+    contenido = re.sub(
+        r"num_madera = random\.randint\(\d+, \d+\)",
+        f"num_madera = random.randint{MUNDO_CONFIG['cantidad_madera']}",
+        contenido
+    )
+    contenido = re.sub(
+        r"num_piedra = random\.randint\(\d+, \d+\)",
+        f"num_piedra = random.randint{MUNDO_CONFIG['cantidad_piedra']}",
+        contenido
+    )
+    contenido = re.sub(
+        r"num_hierro = random\.randint\(\d+, \d+\)",
+        f"num_hierro = random.randint{MUNDO_CONFIG['cantidad_hierro']}",
+        contenido
+    )
+    contenido = re.sub(
+        r"num_diamante = random\.randint\(\d+, \d+\)",
+        f"num_diamante = random.randint{MUNDO_CONFIG['cantidad_diamante']}",
+        contenido
+    )
+    
+    # Actualizar radio
+    contenido = re.sub(
+        r'radio = \d+  # \d+x\d+ área total',
+        f'radio = {MUNDO_CONFIG["radio"]}  # {MUNDO_CONFIG["radio"]*2}x{MUNDO_CONFIG["radio"]*2} área total',
+        contenido
+    )
+    
+    # Actualizar tipo de suelo
+    contenido = re.sub(
+        r'type="(obsidian|stone)"/>\n    \n    # Muro de obsidiana perimetral',
+        f'type="{MUNDO_CONFIG["tipo_suelo"]}"/>\n    \n    # Muro de obsidiana perimetral',
+        contenido
+    )
+    
+    with open(archivo, 'w', encoding='utf-8') as f:
+        f.write(contenido)
+    
+    print("   ✓ Configuración de episodio actualizada")
+    print("   ✓ Configuración de mundo actualizada")
+    print("   ✓ Cantidades de materiales actualizadas")
+
+
+def mostrar_resumen_configuracion():
+    """Muestra un resumen de la configuración actual"""
+    print("\n" + "="*70)
+    print("📊 RESUMEN DE CONFIGURACIÓN ACTUAL")
+    print("="*70)
+    
+    print("\n🧠 PARÁMETROS Q-LEARNING:")
+    for key, value in PARAMETROS_QLEARNING.items():
+        print(f"   {key:20} = {value}")
+    
+    print("\n💰 RECOMPENSAS POR MATERIAL:")
+    for material, recompensa in RECOMPENSA_MATERIAL_OBTENIDO.items():
+        print(f"   {material:20} = +{recompensa}")
+    
+    print("\n⚔️  RECOMPENSAS POR ATAQUE:")
+    for fase, recompensa in RECOMPENSA_ATAQUE_CORRECTO.items():
+        fase_nombre = ['MADERA', 'PIEDRA', 'HIERRO', 'DIAMANTE'][fase]
+        print(f"   Fase {fase} ({fase_nombre:8}) = +{recompensa}")
+    
+    print("\n📍 RECOMPENSAS POR PROXIMIDAD (MUY CERCA):")
+    for fase, recompensa in RECOMPENSA_OBJETIVO_MUY_CERCA.items():
+        fase_nombre = ['MADERA', 'PIEDRA', 'HIERRO', 'DIAMANTE'][fase]
+        print(f"   {fase_nombre:20} = +{recompensa}")
+    
+    print("\n🔢 MULTIPLICADORES POR FASE:")
+    for fase, mult in MULTIPLICADOR_FASE.items():
+        fase_nombre = ['MADERA', 'PIEDRA', 'HIERRO', 'DIAMANTE'][fase]
+        print(f"   Fase {fase} ({fase_nombre:8}) = x{mult}")
+    
+    print("\n⚙️  CONFIGURACIÓN DE EPISODIO:")
+    print(f"   Max pasos           = {EPISODIO_CONFIG['max_pasos']} (~{EPISODIO_CONFIG['max_pasos']*0.6/60:.1f} min)")
+    print(f"   Timeout misión      = {EPISODIO_CONFIG['timeout_mision_ms']/1000:.0f}s")
+    print(f"   Delay comandos      = {EPISODIO_CONFIG['delay_entre_comandos']}s")
+    print(f"   Mostrar progreso    = cada {EPISODIO_CONFIG['mostrar_progreso_cada']} pasos")
+    
+    print("\n🗺️  CONFIGURACIÓN DE MUNDO:")
+    print(f"   Radio (área)        = {MUNDO_CONFIG['radio']} ({MUNDO_CONFIG['radio']*2}x{MUNDO_CONFIG['radio']*2})")
+    print(f"   Madera              = {MUNDO_CONFIG['cantidad_madera']}")
+    print(f"   Piedra              = {MUNDO_CONFIG['cantidad_piedra']}")
+    print(f"   Hierro              = {MUNDO_CONFIG['cantidad_hierro']}")
+    print(f"   Diamante            = {MUNDO_CONFIG['cantidad_diamante']}")
+    
+    print("="*70)
+
+
+if __name__ == "__main__":
+    """
+    Ejecuta este archivo para aplicar la configuración:
+    
+    python3 configuracion_entrenamiento.py
+    
+    Esto actualizará automáticamente los archivos de entrenamiento
+    con los valores definidos arriba.
+    """
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == '--resumen':
+        mostrar_resumen_configuracion()
+    else:
+        mostrar_resumen_configuracion()
+        print("\n" + "="*70)
+        respuesta = input("¿Deseas aplicar esta configuración? (s/n): ")
+        if respuesta.lower() in ['s', 'si', 'y', 'yes']:
+            aplicar_configuracion()
+        else:
+            print("\n❌ Operación cancelada. No se aplicaron cambios.")
+            print("💡 Puedes ver solo el resumen con: python3 configuracion_entrenamiento.py --resumen")
+
