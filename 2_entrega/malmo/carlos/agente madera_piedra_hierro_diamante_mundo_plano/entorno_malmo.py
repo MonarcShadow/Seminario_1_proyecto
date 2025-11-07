@@ -16,6 +16,14 @@ class EntornoMalmoProgresivo:
     con sistema de recompensas adaptativo por fase
     """
     
+    # Constantes de fase
+    FASES = {
+        0: 'MADERA',
+        1: 'PIEDRA',
+        2: 'HIERRO',
+        3: 'DIAMANTE'
+    }
+    
     def __init__(self, agent_host):
         """
         Parámetros:

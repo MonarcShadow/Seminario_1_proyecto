@@ -74,7 +74,9 @@ def generar_mundo_plano_xml(seed=None):
     
     # 1. GENERAR MADERA (15-20 bloques)
     num_madera = random.randint(15, 20)
-    tipos_madera = ['log', 'log 1']  # Oak y Spruce
+    # Solo usar 'log' (Oak) - es válido en el XML
+    # Para variar, podemos usar log2 (Acacia/Dark Oak) también
+    tipos_madera = ['log', 'log2']  # Oak y Acacia/Dark Oak
     
     for _ in range(num_madera):
         intentos = 0
@@ -407,7 +409,7 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
         
         world_state = agent_host.getWorldState()
     
-    # Fin del episodio
+    # Fin del episodio - Esperar a que termine la misión
     print(f"\n{'='*60}")
     print(f"FIN EPISODIO {episodio}")
     print(f"{'='*60}")
@@ -423,6 +425,13 @@ def ejecutar_episodio(agent_host, agente, entorno, episodio, seed=None):
     print(f"  💎 Diamante: {progreso['diamante']}")
     print(f"  Fase alcanzada: {entorno.FASES.get(entorno.fase_actual, 'DESCONOCIDO')}")
     print(f"{'='*60}\n")
+    
+    # Esperar a que la misión termine completamente
+    print("⏳ Esperando fin de misión...")
+    while world_state.is_mission_running:
+        time.sleep(0.1)
+        world_state = agent_host.getWorldState()
+    print("✓ Misión terminada\n")
     
     return {
         'episodio': episodio,
