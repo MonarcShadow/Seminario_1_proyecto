@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Modelos entrenados
+*.pkl
+*.pth
+*.h5
+
+# Grabaciones de Malmo
+grabaciones/
+*.tgz
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Resultados temporales
+resultados_temp/
+experimentos/
