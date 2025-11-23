@@ -479,7 +479,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
             episode_success = True
         
         print(f"Episode {episode} ended. Reward: {total_reward}, Stone in inventory: {final_stone_count}, Stone collected: {max_stone}, Wood: {max_wood}, Iron: {max_iron}, Success: {episode_success}")
-        metrics.log_episode(episode, steps, max_stone, total_reward, agent.epsilon, action_counts)
+        metrics.log_episode(episode, steps, max_wood, max_stone, max_iron, 1 if episode_success else 0, total_reward, agent.epsilon, action_counts)
         agent.end_episode()
         agent.save_model(f"{algorithm}_stone_model.pkl")
         time.sleep(0.5)
