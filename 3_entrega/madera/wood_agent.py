@@ -26,19 +26,23 @@ except ImportError as e:
     print("Please check your MALMO_DIR environment variable and ensure dependencies are installed.")
     sys.exit(1)
 
+
 def generar_mundo_plano_xml(seed=None):
     """
     Generates XML for a flat world with trees, stone, and ores.
     Adapted from mundo_rl.py
+
+    Ahora usa un RNG local basado en 'seed' para que el mundo
+    sea determinista sin afectar el random global.
     """
-    if seed is not None:
-        random.seed(seed)
-    
+    # RNG local (no toca random.seed global)
+    rng = random.Random(seed) if seed is not None else random
+
     # Config - Smaller Arena, High Density
     radio = 10  # Reduced from 20
     posiciones_usadas = set()
     bloques_generados = []
-    
+
     def pos_valida(x, z, min_dist_spawn=3):
         if (x, z) in posiciones_usadas:
             return False
@@ -46,22 +50,22 @@ def generar_mundo_plano_xml(seed=None):
         if dist_spawn < min_dist_spawn:
             return False
         return True
-    
+
     def generar_posicion_aleatoria():
-        x = random.randint(-radio + 2, radio - 2)
-        z = random.randint(-radio + 2, radio - 2)
+        x = rng.randint(-radio + 2, radio - 2)
+        z = rng.randint(-radio + 2, radio - 2)
         return x, z
-    
+
     # 1. Generate Wood (Very High Density: 40-60 blocks)
     # Only generate 'log' (not log2) to avoid SimpleCraftCommands crashes with acacia
-    num_madera = random.randint(40, 60)
-    
+    num_madera = rng.randint(40, 60)
+
     for _ in range(num_madera):
         intentos = 0
         while intentos < 50:
             x, z = generar_posicion_aleatoria()
             if pos_valida(x, z):
-                altura = random.choice([0, 0, 1, 1, 2])
+                altura = rng.choice([0, 0, 1, 1, 2])
                 tipo = 'log'  # Only log (oak/spruce/birch/jungle), no log2 (acacia/dark_oak)
                 for h in range(altura + 1):
                     y = 4 + h
@@ -71,7 +75,7 @@ def generar_mundo_plano_xml(seed=None):
             intentos += 1
 
     # 2. Generate Stone (High Density: 15-20 blocks)
-    num_piedra = random.randint(15, 20)
+    num_piedra = rng.randint(15, 20)
     for _ in range(num_piedra):
         intentos = 0
         while intentos < 50:
@@ -83,7 +87,7 @@ def generar_mundo_plano_xml(seed=None):
             intentos += 1
 
     # 3. Generate Iron Ore (Medium Density: 5-10 blocks)
-    num_hierro = random.randint(5, 10)
+    num_hierro = rng.randint(5, 10)
     for _ in range(num_hierro):
         intentos = 0
         while intentos < 50:
@@ -93,7 +97,7 @@ def generar_mundo_plano_xml(seed=None):
                 posiciones_usadas.add((x, z))
                 break
             intentos += 1
-            
+
     # Drawing XML
     drawing_xml = ""
     # Obsidian floor and walls
@@ -102,7 +106,7 @@ def generar_mundo_plano_xml(seed=None):
     drawing_xml += f'<DrawCuboid x1="{-radio}" y1="4" z1="{radio}" x2="{radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
     drawing_xml += f'<DrawCuboid x1="{radio}" y1="4" z1="{-radio}" x2="{radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
     drawing_xml += f'<DrawCuboid x1="{-radio}" y1="4" z1="{-radio}" x2="{-radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
-    
+
     for x, y, z, tipo in bloques_generados:
         drawing_xml += f'<DrawBlock x="{x}" y="{y}" z="{z}" type="{tipo}"/>\n'
 
@@ -174,6 +178,7 @@ def generar_mundo_plano_xml(seed=None):
         </AgentSection>
     </Mission>'''
 
+
 def get_state(world_state):
     """
     Enhanced state representation including inventory for Tech Tree
@@ -181,30 +186,30 @@ def get_state(world_state):
     """
     if not world_state.number_of_observations_since_last_state:
         return None
-    
+
     msg = world_state.observations[-1].text
     obs = json.loads(msg)
-    
+
     # Get surroundings (now 5x5 grid)
     surroundings = tuple(obs.get("surroundings5x5", []))
-    
+
     # Count inventory items
     wood_count = 0
     stone_count = 0
     iron_count = 0
     has_wooden_pickaxe = False
     has_stone_pickaxe = False
-    
+
     # Method 1: Check flat inventory structure (InventorySlot_0_item, etc.)
     # This is the format used by ObservationFromFullInventory
     for i in range(45):
         item_key = f"InventorySlot_{i}_item"
         size_key = f"InventorySlot_{i}_size"
-        
+
         if item_key in obs:
             item_type = obs[item_key]
             quantity = obs.get(size_key, 1)
-            
+
             if item_type == "log":  # Only count craftable wood (not log2/acacia)
                 wood_count += quantity
             elif item_type == "stone":
@@ -215,13 +220,13 @@ def get_state(world_state):
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
                 has_stone_pickaxe = True
-    
+
     # Method 2: Also check list format (backup)
     if "inventory" in obs:
         for item in obs["inventory"]:
             item_type = item.get("type", "")
             quantity = item.get("quantity", 0)
-            
+
             if item_type == "log":  # Only count craftable wood (not log2/acacia)
                 wood_count += quantity
             elif item_type == "stone":
@@ -232,10 +237,17 @@ def get_state(world_state):
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
                 has_stone_pickaxe = True
-    
+
     return (surroundings, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe)
 
-def train_agent(algorithm="qlearning", num_episodes=50):
+
+def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
+    """
+    Entrena un agente en el entorno de recolección de madera.
+
+    env_seed: semilla del entorno. Con el mismo valor, el layout de bloques
+    (madera, piedra, hierro) será siempre el mismo entre episodios y algoritmos.
+    """
     # Action space with contextual jump and pitch
     actions = [
         "move 1", "move -1",           # Forward/backward
@@ -244,10 +256,10 @@ def train_agent(algorithm="qlearning", num_episodes=50):
         "pitch 0.1", "pitch -0.1",     # Look up/down (small angles)
         "jump 1",                      # Jump (should use when obstacle ahead)
         "attack 1",                    # Attack/mine
-        "craft_wooden_pickaxe", 
+        "craft_wooden_pickaxe",
         "craft_stone_pickaxe"
     ]
-    
+
     if algorithm == "qlearning":
         agent = QLearningAgent(actions)
     elif algorithm == "sarsa":
@@ -266,20 +278,22 @@ def train_agent(algorithm="qlearning", num_episodes=50):
 
     metrics = MetricsLogger(f"{algorithm}_WoodAgent")
     agent_host = MalmoPython.AgentHost()
-    
+
     print(f"Starting training with {algorithm}...")
-    
+
     # Create ClientPool to support multiple ports (10000, 10001)
     client_pool = MalmoPython.ClientPool()
     client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10000))
     client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10001))
 
+    # Mismo escenario de bloques para todos los episodios
+    mission_xml = generar_mundo_plano_xml(seed=env_seed)
+
     for episode in range(num_episodes):
         agent.start_episode()
-        mission_xml = generar_mundo_plano_xml(seed=episode) # Different seed per episode
         my_mission = MalmoPython.MissionSpec(mission_xml, True)
         my_mission_record = MalmoPython.MissionRecordSpec()
-        
+
         max_retries = 3
         for retry in range(max_retries):
             try:
@@ -316,14 +330,14 @@ def train_agent(algorithm="qlearning", num_episodes=50):
         max_stone = 0
         max_iron = 0
         action_counts = {"move": 0, "turn": 0, "attack": 0, "craft": 0}
-        
+
         # Initial state
         while world_state.is_mission_running and world_state.number_of_observations_since_last_state == 0:
-             world_state = agent_host.getWorldState()
-             time.sleep(0.1)
-        
+            world_state = agent_host.getWorldState()
+            time.sleep(0.1)
+
         state = get_state(world_state)
-        
+
         # For SARSA, we need initial action
         action = agent.choose_action(state) if state else None
 
@@ -342,7 +356,7 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                     return (True, 5000, "✓✓✓ SUCCESS! Collected 3 wood - Episode Complete!", True)
                 else:
                     return (False, -10, "Cannot craft wooden pickaxe (need 3 wood)", False)
-            
+
             elif action == "craft_stone_pickaxe":
                 _, wood, stone, iron, has_wood_pick, has_stone_pick = state
                 if stone >= 3 and has_wood_pick and not has_stone_pick:
@@ -351,8 +365,10 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                     return (True, 10000, "✓✓✓ SUCCESS! Crafted Stone Pickaxe!", True)
                 else:
                     return (False, -10, "Cannot craft stone pickaxe (need 3 stone + wooden pickaxe)", False)
-            
+
             return (False, 0, "", False)
+
+        next_state = None  # definimos aquí para usarlo después del bucle
 
         while world_state.is_mission_running:
             if state and action:
@@ -362,7 +378,7 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                     if msg:
                         print(f"  {msg}")
                     total_reward += craft_reward
-                    
+
                     # If episode is successful, end mission
                     if should_quit and success:
                         print(f"\n{'='*60}")
@@ -372,13 +388,13 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                         break
                 else:
                     agent_host.sendCommand(action)
-                
+
                 steps += 1
-                
+
                 # Auto-reset pitch every 20 steps to keep camera centered
                 if steps % 20 == 0:
                     agent_host.sendCommand("pitch 0")  # Reset to horizontal
-                
+
                 # Track action type and apply contextual rewards
                 if "move" in action or "strafe" in action:
                     action_counts["move"] += 1
@@ -413,7 +429,7 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                         if len(surroundings) > 40:
                             # Check blocks in front at different heights
                             front_blocks = [surroundings[i] for i in [37, 38, 39, 40] if i < len(surroundings)]
-                            
+
                             # Reward for hitting valuable blocks
                             for block in front_blocks:
                                 if block in ['log', 'log2']:
@@ -427,41 +443,41 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                                     break
                 elif "craft" in action:
                     action_counts["craft"] += 1
-                
+
                 time.sleep(0.02)  # Very fast actions (50 actions/second)
-                
+
                 world_state = agent_host.getWorldState()
                 next_state = get_state(world_state)
-                
+
                 # Check if episode goal achieved (crafted wooden pickaxe)
                 if next_state:
                     _, check_wood, check_stone, check_iron, has_wood_pick, has_stone_pick = next_state
-                    
+
                     # Show progress every 100 steps
                     if steps % 100 == 0 and check_wood > 0:
                         print(f"  [Progress] Wood: {check_wood}/3, Has Pick: {has_wood_pick}")
-                    
+
                     # Auto-craft when has 3+ wood but no pickaxe yet
                     if check_wood >= 3 and not has_wood_pick:
                         print(f"\n  >> Auto-crafting wooden pickaxe (Wood: {check_wood})...")
-                        
+
                         # Update max_wood before crafting (wood will be consumed)
                         max_wood = max(max_wood, check_wood)
-                        
+
                         # Step 1: Convert log to planks (only supported variants)
                         # Try log variants: 0=oak, 1=spruce, 2=birch, 3=jungle
                         for variant in range(4):
                             agent_host.sendCommand(f"craft planks {variant}")
                             time.sleep(0.05)
-                        
+
                         # Step 2: 2 planks → 4 sticks
                         agent_host.sendCommand("craft stick")
                         time.sleep(0.2)
-                        
+
                         # Step 3: 3 planks + 2 sticks → wooden pickaxe
                         agent_host.sendCommand("craft wooden_pickaxe")
                         time.sleep(0.3)
-                        
+
                         # Verify crafting
                         world_state = agent_host.getWorldState()
                         if world_state.number_of_observations_since_last_state > 0:
@@ -472,28 +488,28 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                                 if item_key in verify_obs and verify_obs[item_key] == "wooden_pickaxe":
                                     verify_has_pick = True
                                     break
-                            
+
                             if verify_has_pick:
                                 print(f"\n{'='*60}")
                                 print(f"🎉 SUCCESS! Crafted wooden pickaxe - Episode complete!")
                                 print(f"{'='*60}")
                                 total_reward += 10000  # Massive success reward
-                                
+
                                 # Update next_state to reflect post-crafting inventory
                                 world_state = agent_host.getWorldState()
                                 next_state = get_state(world_state)
-                                
+
                                 agent_host.sendCommand("quit")
                                 break
                             else:
                                 print("  ⚠ Warning: Pickaxe not confirmed in inventory")
-                
+
                 reward = sum(r.getValue() for r in world_state.rewards)
-                
+
                 # Track collection by inventory changes (more reliable than rewards)
                 if next_state:
                     _, cur_wood, cur_stone, cur_iron, _, _ = next_state
-                    
+
                     # Detect inventory increases
                     if cur_wood > prev_wood:
                         wood_collected += (cur_wood - prev_wood)
@@ -504,24 +520,24 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                     if cur_iron > prev_iron:
                         iron_collected += (cur_iron - prev_iron)
                         print(f"  [COLLECT] +{cur_iron - prev_iron} Iron! Total: {iron_collected}")
-                    
+
                     # Track maximum collected (for final metrics)
                     max_wood = max(max_wood, wood_collected)
                     max_stone = max(max_stone, stone_collected)
                     max_iron = max(max_iron, iron_collected)
-                    
+
                     # Update previous counts
                     prev_wood = cur_wood
                     prev_stone = cur_stone
                     prev_iron = cur_iron
-                
+
                 # Debug: Show rewards when they occur
                 reward = sum(r.getValue() for r in world_state.rewards)
                 if reward != 0:
                     print(f"  [REWARD] Step {steps}: {reward}")
-                
+
                 total_reward += reward
-                
+
                 if next_state:
                     # For SARSA, learn returns the next action
                     # For others, it returns None and we choose it here
@@ -531,31 +547,31 @@ def train_agent(algorithm="qlearning", num_episodes=50):
                     else:
                         agent.learn(state, action, reward, next_state, done=False)
                         action = agent.choose_action(next_state)
-                    
+
                     state = next_state
                 else:
                     # Mission might have ended or no obs
                     if not world_state.is_mission_running:
-                        agent.learn(state, action, reward, state, done=True) # Terminal update
+                        agent.learn(state, action, reward, state, done=True)  # Terminal update
             else:
-                 world_state = agent_host.getWorldState()
-                 state = get_state(world_state)
-                 if state:
-                     action = agent.choose_action(state)
+                world_state = agent_host.getWorldState()
+                state = get_state(world_state)
+                if state:
+                    action = agent.choose_action(state)
 
         # Check if episode was successful by checking if wooden pickaxe is in inventory
         episode_success = False
         final_wood_count = 0
-        
+
         if next_state:
             _, final_wood_count, _, _, has_wooden_pick, _ = next_state
             if has_wooden_pick:
                 episode_success = True
-        
+
         # Fallback: also check by reward if state wasn't captured
         if not episode_success and total_reward >= 10000:
             episode_success = True
-        
+
         print(f"Episode {episode} ended. Reward: {total_reward}, Wood in inventory: {final_wood_count}, Wood collected: {max_wood}, Stone: {max_stone}, Iron: {max_iron}, Success: {episode_success}")
         metrics.log_episode(episode, steps, max_wood, total_reward, agent.epsilon, action_counts)
         agent.end_episode()
@@ -565,12 +581,15 @@ def train_agent(algorithm="qlearning", num_episodes=50):
     metrics.plot_metrics()
     agent.save_model(f"{algorithm}_model.pkl")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run Wood Gathering Agent')
-    parser.add_argument('--algorithm', type=str, default='qlearning', 
+    parser.add_argument('--algorithm', type=str, default='qlearning',
                         choices=['qlearning', 'sarsa', 'expected_sarsa', 'double_q', 'monte_carlo', 'random'],
                         help='RL algorithm to use')
     parser.add_argument('--episodes', type=int, default=50, help='Number of episodes')
-    
+    parser.add_argument('--env-seed', type=int, default=12345,
+                        help='Environment seed (fixed layout of blocks)')
+
     args = parser.parse_args()
-    train_agent(args.algorithm, args.episodes)
+    train_agent(args.algorithm, args.episodes, args.env_seed)
