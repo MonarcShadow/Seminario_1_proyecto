@@ -155,6 +155,7 @@ def generar_mundo_plano_xml(seed=None):
                 </ObservationFromGrid>
                 <ContinuousMovementCommands turnSpeedDegs="180"/>
                 <DiscreteMovementCommands/>
+                <AbsoluteMovementCommands/>
                 <InventoryCommands/>
                 <SimpleCraftCommands/>
                 <MissionQuitCommands/>
@@ -241,20 +242,20 @@ def get_state(world_state):
     return (surroundings, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe)
 
 
-def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
+def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10000):
     """
     Entrena un agente en el entorno de recolección de madera.
 
     env_seed: semilla del entorno. Con el mismo valor, el layout de bloques
     (madera, piedra, hierro) será siempre el mismo entre episodios y algoritmos.
+    port: puerto para conectar con Minecraft (default: 10000)
     """
-    # Action space with contextual jump and pitch
+    # Action space
     actions = [
         "move 1", "move -1",           # Forward/backward
         "strafe 1", "strafe -1",       # Left/right strafe
         "turn 1", "turn -1",           # Turn left/right
         "pitch 0.1", "pitch -0.1",     # Look up/down (small angles)
-        "jump 1",                      # Jump (should use when obstacle ahead)
         "attack 1",                    # Attack/mine
         "craft_wooden_pickaxe",
         "craft_stone_pickaxe"
@@ -279,12 +280,13 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
     metrics = MetricsLogger(f"{algorithm}_WoodAgent")
     agent_host = MalmoPython.AgentHost()
 
-    print(f"Starting training with {algorithm}...")
+    print(f"Starting training with {algorithm} on port {port}...")
 
-    # Create ClientPool to support multiple ports (10000, 10001)
+    # Create ClientPool to support multiple ports
     client_pool = MalmoPython.ClientPool()
-    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10000))
-    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10001))
+    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
+    # Add fallback port
+    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port + 1))
 
     # Mismo escenario de bloques para todos los episodios
     mission_xml = generar_mundo_plano_xml(seed=env_seed)
@@ -330,6 +332,10 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
         max_stone = 0
         max_iron = 0
         action_counts = {"move": 0, "turn": 0, "attack": 0, "craft": 0}
+        
+        # Track pitch time for auto-reset using observation 'Pitch'
+        pitch_start_time = None
+        pitch_threshold = 5.0  # degrees: consider >5° as looking up/down
 
         # Initial state
         while world_state.is_mission_running and world_state.number_of_observations_since_last_state == 0:
@@ -391,10 +397,6 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
 
                 steps += 1
 
-                # Auto-reset pitch every 20 steps to keep camera centered
-                if steps % 20 == 0:
-                    agent_host.sendCommand("pitch 0")  # Reset to horizontal
-
                 # Track action type and apply contextual rewards
                 if "move" in action or "strafe" in action:
                     action_counts["move"] += 1
@@ -403,21 +405,6 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
                     # Penalize excessive pitch usage
                     if "pitch" in action:
                         total_reward -= 10  # Increased from -0.5
-                elif "jump" in action:
-                    action_counts["move"] += 1
-                    # Smart jump rewards: check if there's an obstacle in front
-                    if state:
-                        surroundings, _, _, _, _, _ = state
-                        # Check center-front block (index depends on grid layout)
-                        # In a 5x5x3 grid, center front is approximately index 37
-                        if len(surroundings) > 37:
-                            front_block = surroundings[37] if surroundings[37] != 'air' else None
-                            if front_block and front_block not in ['air', 'lava']:
-                                # Good jump! There's an obstacle
-                                total_reward += 50  # Increased from 2
-                            else:
-                                # Bad jump! Nothing to jump over
-                                total_reward -= 50  # Increased from -2
                 elif "attack" in action:
                     action_counts["attack"] += 1
                     # Reward for attacking valuable blocks (encourages persistence)
@@ -448,6 +435,57 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=12345):
 
                 world_state = agent_host.getWorldState()
                 next_state = get_state(world_state)
+
+                # Auto-reset pitch if agent has been looking up/down for >10 seconds
+                if world_state.number_of_observations_since_last_state > 0:
+                    try:
+                        obs_json = json.loads(world_state.observations[-1].text)
+                        # Debug: if needed, uncomment next line to inspect observation keys
+                        # print('OBS KEYS:', obs_json.keys())
+                        pitch_val = obs_json.get('Pitch', None)
+                        if pitch_val is None:
+                            # try lowercase key as fallback
+                            pitch_val = obs_json.get('pitch', None)
+
+                        if pitch_val is not None:
+                            pitch = float(pitch_val)
+                            # Debug print to help trace why reset may not be happening
+                            # print(f"DEBUG: current pitch={pitch}")
+                            if abs(pitch) > pitch_threshold:
+                                if pitch_start_time is None:
+                                    pitch_start_time = time.time()
+                                elif time.time() - pitch_start_time >= 10.0:
+                                    print(f"  [AUTO-RESET] Pitch {pitch:.2f}° -> resetting to 0° after 10s")
+                                    # Try robust reset sequence: absolute set, then relative, then gradual fallback
+                                    try:
+                                        agent_host.sendCommand("setPitch 0")
+                                    except Exception:
+                                        pass
+                                    try:
+                                        agent_host.sendCommand("pitch 0")
+                                    except Exception:
+                                        pass
+                                    # As a fallback, nudge pitch toward 0 with small steps
+                                    try:
+                                        if pitch > 0:
+                                            for _ in range(20):
+                                                agent_host.sendCommand("pitch -0.1")
+                                                time.sleep(0.01)
+                                        elif pitch < 0:
+                                            for _ in range(20):
+                                                agent_host.sendCommand("pitch 0.1")
+                                                time.sleep(0.01)
+                                    except Exception:
+                                        pass
+                                    # Apply penalty for forced correction
+                                    total_reward -= 300
+                                    print("  [PENALTY] -300 applied for auto-reset correction")
+                                    pitch_start_time = None
+                            else:
+                                pitch_start_time = None
+                    except Exception:
+                        # If observation parsing fails, ignore and continue
+                        pass
 
                 # Check if episode goal achieved (crafted wooden pickaxe)
                 if next_state:
@@ -588,8 +626,10 @@ if __name__ == "__main__":
                         choices=['qlearning', 'sarsa', 'expected_sarsa', 'double_q', 'monte_carlo', 'random'],
                         help='RL algorithm to use')
     parser.add_argument('--episodes', type=int, default=50, help='Number of episodes')
-    parser.add_argument('--env-seed', type=int, default=12345,
+    parser.add_argument('--env-seed', type=int, default=123456,
                         help='Environment seed (fixed layout of blocks)')
+    parser.add_argument('--port', type=int, default=10000,
+                        help='Minecraft server port (default: 10000)')
 
     args = parser.parse_args()
-    train_agent(args.algorithm, args.episodes, args.env_seed)
+    train_agent(args.algorithm, args.episodes, args.env_seed, args.port)
