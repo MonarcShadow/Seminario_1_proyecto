@@ -30,9 +30,12 @@ def generar_mundo_piedra_xml(seed=None):
     """
     Generates XML for stone mining world
     Agent starts with wooden pickaxe, planks, and sticks
+    
+    Ahora usa un RNG local basado en 'seed' para que el mundo
+    sea determinista sin afectar el random global.
     """
-    if seed is not None:
-        random.seed(seed)
+    # RNG local (no toca random.seed global)
+    rng = random.Random(seed) if seed is not None else random
     
     # Config - Arena with stone blocks
     radio = 10
@@ -48,12 +51,12 @@ def generar_mundo_piedra_xml(seed=None):
         return True
     
     def generar_posicion_aleatoria():
-        x = random.randint(-radio + 2, radio - 2)
-        z = random.randint(-radio + 2, radio - 2)
+        x = rng.randint(-radio + 2, radio - 2)
+        z = rng.randint(-radio + 2, radio - 2)
         return x, z
     
     # 1. Generate Stone (High Density: 30-40 blocks)
-    num_piedra = random.randint(30, 40)
+    num_piedra = rng.randint(30, 40)
     for _ in range(num_piedra):
         intentos = 0
         while intentos < 50:
@@ -65,13 +68,13 @@ def generar_mundo_piedra_xml(seed=None):
             intentos += 1
 
     # 2. Generate some wood for variety (optional, lower density)
-    num_madera = random.randint(5, 10)
+    num_madera = rng.randint(5, 10)
     for _ in range(num_madera):
         intentos = 0
         while intentos < 50:
             x, z = generar_posicion_aleatoria()
             if pos_valida(x, z):
-                altura = random.choice([0, 1])
+                altura = rng.choice([0, 1])
                 tipo = 'log'
                 for h in range(altura + 1):
                     y = 4 + h
@@ -221,17 +224,26 @@ def get_state(world_state):
     
     return (surroundings, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe)
 
-def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
-    # Action space (same as wood agent for compatibility)
+def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_seed=123456, port=10000):
+    """
+    Entrena un agente en el entorno de recolección de piedra (Stage 2).
+
+    env_seed: semilla del entorno. Con el mismo valor, el layout de bloques
+    será siempre el mismo entre episodios y algoritmos.
+    port: puerto para conectar con Minecraft (default: 10000)
+    """
+    # Action space (sin jump, igual que wood_agent actualizado)
+    # Standardized action space for transfer learning compatibility
+    # All stages must have identical action spaces
     actions = [
-        "move 1", "move -1",
-        "strafe 1", "strafe -1",
-        "turn 1", "turn -1",
-        "pitch 0.1", "pitch -0.1",
-        "jump 1",
-        "attack 1",
-        "craft_wooden_pickaxe",  # Not used in this stage but kept for compatibility
-        "craft_stone_pickaxe"
+        "move 1", "move -1",           # 0, 1: Forward/backward
+        "strafe 1", "strafe -1",       # 2, 3: Left/right strafe
+        "turn 1", "turn -1",           # 4, 5: Turn left/right
+        "pitch 0.1", "pitch -0.1",     # 6, 7: Look up/down
+        "attack 1",                    # 8: Attack/mine
+        "craft_wooden_pickaxe",        # 9: Stage 1 craft (not used here)
+        "craft_stone_pickaxe",         # 10: Stage 2 craft
+        "craft_iron_pickaxe"           # 11: Stage 3 craft (not used here)
     ]
     
     # Initialize agent
@@ -259,16 +271,30 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
     metrics = MetricsLogger(f"{algorithm}_StoneAgent")
     agent_host = MalmoPython.AgentHost()
     
-    print(f"Starting Stage 2 training with {algorithm}...")
+    # Map each algorithm to a specific port (10001-10006)
+    algorithm_ports = {
+        'qlearning': 10001,
+        'sarsa': 10002,
+        'expected_sarsa': 10003,
+        'double_q': 10004,
+        'monte_carlo': 10005,
+        'random': 10006
+    }
+    # Override port with algorithm-specific port if not manually specified
+    if port == 10000:  # default value means user didn't specify --port
+        port = algorithm_ports.get(algorithm, 10001)
+    
+    print(f"Starting Stage 2 training with {algorithm} on port {port}...")
     
     # Create ClientPool
     client_pool = MalmoPython.ClientPool()
-    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10000))
-    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", 10001))
+    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
+
+    # Mismo escenario de bloques para todos los episodios
+    mission_xml = generar_mundo_piedra_xml(seed=env_seed)
 
     for episode in range(num_episodes):
         agent.start_episode()
-        mission_xml = generar_mundo_piedra_xml(seed=episode)
         my_mission = MalmoPython.MissionSpec(mission_xml, True)
         my_mission_record = MalmoPython.MissionRecordSpec()
         
@@ -306,6 +332,10 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
         max_iron = 0
         action_counts = {"move": 0, "turn": 0, "attack": 0, "craft": 0}
         
+        # Track pitch time for auto-reset using observation 'Pitch'
+        pitch_start_time = None
+        pitch_threshold = 5.0  # degrees: consider >5° as looking up/down
+        
         # Initial state
         while world_state.is_mission_running and world_state.number_of_observations_since_last_state == 0:
              world_state = agent_host.getWorldState()
@@ -313,6 +343,31 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
         
         state = get_state(world_state)
         action = agent.choose_action(state) if state else None
+
+        def auto_select_tool(world_state, agent_host):
+            """
+            Automatically selects the optimal tool based on the block in front.
+            Stage 2 (Stone): Uses wooden_pickaxe for stone
+            """
+            if world_state.number_of_observations_since_last_state > 0:
+                try:
+                    obs = json.loads(world_state.observations[-1].text)
+                    surroundings = obs.get("surroundings5x5", [])
+                    
+                    if len(surroundings) > 37:
+                        front_block = surroundings[37]
+                        
+                        # Stage 2: Select wooden_pickaxe for stone
+                        if front_block == 'stone':
+                            # Find wooden_pickaxe in hotbar (slots 0-8)
+                            for slot in range(9):
+                                item_key = f"InventorySlot_{slot}_item"
+                                if item_key in obs and obs[item_key] == "wooden_pickaxe":
+                                    agent_host.sendCommand(f"hotbar.{slot+1} 1")  # Select slot (1-indexed)
+                                    agent_host.sendCommand(f"hotbar.{slot+1} 0")
+                                    break
+                except Exception:
+                    pass
 
         def handle_crafting(action, state, agent_host):
             """Handle crafting actions"""
@@ -327,6 +382,8 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
                 return (False, -10, "Already have wooden pickaxe", False)
             
             return (False, 0, "", False)
+
+        next_state = None  # definimos aquí para usarlo después del bucle
 
         while world_state.is_mission_running:
             if state and action:
@@ -355,6 +412,9 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
                 elif "jump" in action:
                     action_counts["move"] += 1
                 elif "attack" in action:
+                    # Auto-select optimal tool before attacking
+                    auto_select_tool(world_state, agent_host)
+                    
                     action_counts["attack"] += 1
                     # Reward for attacking stone
                     if state:
@@ -372,6 +432,48 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
                 
                 world_state = agent_host.getWorldState()
                 next_state = get_state(world_state)
+                
+                # Auto-reset pitch if agent has been looking up/down for >10 seconds
+                if world_state.number_of_observations_since_last_state > 0:
+                    try:
+                        obs_json = json.loads(world_state.observations[-1].text)
+                        pitch_val = obs_json.get('Pitch', None)
+                        if pitch_val is None:
+                            pitch_val = obs_json.get('pitch', None)
+
+                        if pitch_val is not None:
+                            pitch = float(pitch_val)
+                            if abs(pitch) > pitch_threshold:
+                                if pitch_start_time is None:
+                                    pitch_start_time = time.time()
+                                elif time.time() - pitch_start_time >= 10.0:
+                                    print(f"  [AUTO-RESET] Pitch {pitch:.2f}° -> resetting to 0° after 10s")
+                                    try:
+                                        agent_host.sendCommand("setPitch 0")
+                                    except Exception:
+                                        pass
+                                    try:
+                                        agent_host.sendCommand("pitch 0")
+                                    except Exception:
+                                        pass
+                                    try:
+                                        if pitch > 0:
+                                            for _ in range(20):
+                                                agent_host.sendCommand("pitch -0.1")
+                                                time.sleep(0.01)
+                                        elif pitch < 0:
+                                            for _ in range(20):
+                                                agent_host.sendCommand("pitch 0.1")
+                                                time.sleep(0.01)
+                                    except Exception:
+                                        pass
+                                    total_reward -= 300
+                                    print("  [PENALTY] -300 applied for auto-reset correction")
+                                    pitch_start_time = None
+                            else:
+                                pitch_start_time = None
+                    except Exception:
+                        pass
                 
                 # Check if episode goal achieved (crafted stone pickaxe)
                 if next_state:
@@ -479,13 +581,15 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None):
             episode_success = True
         
         print(f"Episode {episode} ended. Reward: {total_reward}, Stone in inventory: {final_stone_count}, Stone collected: {max_stone}, Wood: {max_wood}, Iron: {max_iron}, Success: {episode_success}")
-        metrics.log_episode(episode, steps, max_wood, max_stone, max_iron, 1 if episode_success else 0, total_reward, agent.epsilon, action_counts)
+        metrics.log_episode(episode, steps, max_stone, total_reward, agent.epsilon, action_counts)
         agent.end_episode()
-        agent.save_model(f"{algorithm}_stone_model.pkl")
+        os.makedirs('../entrenamiento_acumulado', exist_ok=True)
+        agent.save_model(f"../entrenamiento_acumulado/{algorithm}_stone_model.pkl")
         time.sleep(0.5)
 
     metrics.plot_metrics()
-    agent.save_model(f"{algorithm}_stone_model.pkl")
+    os.makedirs('../entrenamiento_acumulado', exist_ok=True)
+    agent.save_model(f"../entrenamiento_acumulado/{algorithm}_stone_model.pkl")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run Stone Pickaxe Agent - Stage 2')
@@ -495,6 +599,10 @@ if __name__ == "__main__":
     parser.add_argument('--episodes', type=int, default=50, help='Number of episodes')
     parser.add_argument('--load-model', type=str, default=None, 
                         help='Path to pre-trained wood agent model to continue training')
+    parser.add_argument('--env-seed', type=int, default=123456,
+                        help='Environment seed (fixed layout of blocks)')
+    parser.add_argument('--port', type=int, default=10000,
+                        help='Minecraft server port (default: 10000)')
     
     args = parser.parse_args()
-    train_agent(args.algorithm, args.episodes, args.load_model)
+    train_agent(args.algorithm, args.episodes, args.load_model, args.env_seed, args.port)

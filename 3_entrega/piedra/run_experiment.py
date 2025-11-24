@@ -6,7 +6,7 @@ algorithms = ['qlearning', 'sarsa', 'expected_sarsa', 'double_q', 'monte_carlo',
 episodes = 50
 
 # Path to pre-trained wood agent models (optional)
-wood_model_path = "../madera"
+wood_model_path = "../entrenamiento_acumulado"
 
 print("Running Stage 2 (Stone Pickaxe) experiments for 6 algorithms...")
 

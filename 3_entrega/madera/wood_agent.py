@@ -251,14 +251,17 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
     port: puerto para conectar con Minecraft (default: 10000)
     """
     # Action space
+    # Standardized action space for transfer learning compatibility
+    # All stages must have identical action spaces
     actions = [
-        "move 1", "move -1",           # Forward/backward
-        "strafe 1", "strafe -1",       # Left/right strafe
-        "turn 1", "turn -1",           # Turn left/right
-        "pitch 0.1", "pitch -0.1",     # Look up/down (small angles)
-        "attack 1",                    # Attack/mine
-        "craft_wooden_pickaxe",
-        "craft_stone_pickaxe"
+        "move 1", "move -1",           # 0, 1: Forward/backward
+        "strafe 1", "strafe -1",       # 2, 3: Left/right strafe
+        "turn 1", "turn -1",           # 4, 5: Turn left/right
+        "pitch 0.1", "pitch -0.1",     # 6, 7: Look up/down
+        "attack 1",                    # 8: Attack/mine
+        "craft_wooden_pickaxe",        # 9: Stage 1 craft
+        "craft_stone_pickaxe",         # 10: Stage 2 craft (not used here)
+        "craft_iron_pickaxe"           # 11: Stage 3 craft (not used here)
     ]
 
     if algorithm == "qlearning":
@@ -280,13 +283,24 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
     metrics = MetricsLogger(f"{algorithm}_WoodAgent")
     agent_host = MalmoPython.AgentHost()
 
+    # Map each algorithm to a specific port (10001-10006)
+    algorithm_ports = {
+        'qlearning': 10001,
+        'sarsa': 10002,
+        'expected_sarsa': 10003,
+        'double_q': 10004,
+        'monte_carlo': 10005,
+        'random': 10006
+    }
+    # Override port with algorithm-specific port if not manually specified
+    if port == 10000:  # default value means user didn't specify --port
+        port = algorithm_ports.get(algorithm, 10001)
+
     print(f"Starting training with {algorithm} on port {port}...")
 
     # Create ClientPool to support multiple ports
     client_pool = MalmoPython.ClientPool()
     client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
-    # Add fallback port
-    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port + 1))
 
     # Mismo escenario de bloques para todos los episodios
     mission_xml = generar_mundo_plano_xml(seed=env_seed)
@@ -347,6 +361,29 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
         # For SARSA, we need initial action
         action = agent.choose_action(state) if state else None
 
+        def auto_select_tool(world_state, agent_host):
+            """
+            Automatically selects the optimal tool based on the block in front.
+            Stage 1 (Wood): Uses diamond_axe for wood (if available in future stages)
+            """
+            if world_state.number_of_observations_since_last_state > 0:
+                try:
+                    obs = json.loads(world_state.observations[-1].text)
+                    # Check what block is in front (use surroundings5x5 grid)
+                    surroundings = obs.get("surroundings5x5", [])
+                    
+                    # Center-front position in 5x5x3 grid (75 blocks total)
+                    # Grid: 5 wide x 5 deep x 3 high
+                    # Center front at eye level is around index 37
+                    if len(surroundings) > 37:
+                        front_block = surroundings[37]
+                        
+                        # Stage 1: No tool selection needed (bare hands for wood)
+                        # This function is here for consistency with other stages
+                        pass
+                except Exception:
+                    pass
+        
         def handle_crafting(action, state, agent_host):
             """
             Handle crafting actions and return custom reward
@@ -406,6 +443,9 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
                     if "pitch" in action:
                         total_reward -= 10  # Increased from -0.5
                 elif "attack" in action:
+                    # Auto-select optimal tool before attacking
+                    auto_select_tool(world_state, agent_host)
+                    
                     action_counts["attack"] += 1
                     # Reward for attacking valuable blocks (encourages persistence)
                     if state:
@@ -613,11 +653,13 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
         print(f"Episode {episode} ended. Reward: {total_reward}, Wood in inventory: {final_wood_count}, Wood collected: {max_wood}, Stone: {max_stone}, Iron: {max_iron}, Success: {episode_success}")
         metrics.log_episode(episode, steps, max_wood, total_reward, agent.epsilon, action_counts)
         agent.end_episode()
-        agent.save_model(f"{algorithm}_model.pkl")
+        os.makedirs('../entrenamiento_acumulado', exist_ok=True)
+        agent.save_model(f"../entrenamiento_acumulado/{algorithm}_model.pkl")
         time.sleep(0.5)
 
     metrics.plot_metrics()
-    agent.save_model(f"{algorithm}_model.pkl")
+    os.makedirs('../entrenamiento_acumulado', exist_ok=True)
+    agent.save_model(f"../entrenamiento_acumulado/{algorithm}_model.pkl")
 
 
 if __name__ == "__main__":

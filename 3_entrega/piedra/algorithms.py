@@ -31,10 +31,17 @@ class Agent:
         pass
 
     def save_model(self, path):
-        pass
+        """Base implementation: saves a minimal model file."""
+        with open(path, 'wb') as f:
+            pickle.dump({'type': self.__class__.__name__, 'epsilon': getattr(self, 'epsilon', 1.0)}, f)
 
     def load_model(self, path):
-        pass
+        """Base implementation: loads a minimal model file."""
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                data = pickle.load(f)
+                if 'epsilon' in data and hasattr(self, 'epsilon'):
+                    self.epsilon = data['epsilon']
 
 class RandomAgent(Agent):
     def __init__(self, actions):

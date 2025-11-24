@@ -15,12 +15,12 @@ Nota: Asegúrate de tener múltiples instancias de Minecraft ejecutándose en di
 
 # Configuración de algoritmos y puertos
 ALGORITHMS_CONFIG = [
-    {'algorithm': 'qlearning', 'port': 10000},
-    {'algorithm': 'sarsa', 'port': 10001},
-    {'algorithm': 'expected_sarsa', 'port': 10002},
-    {'algorithm': 'double_q', 'port': 10003},
-    {'algorithm': 'monte_carlo', 'port': 10004},
-    {'algorithm': 'random', 'port': 10005},
+    {'algorithm': 'qlearning', 'port': 10001},
+    {'algorithm': 'sarsa', 'port': 10002},
+    {'algorithm': 'expected_sarsa', 'port': 10003},
+    {'algorithm': 'double_q', 'port': 10004},
+    {'algorithm': 'monte_carlo', 'port': 10005},
+    {'algorithm': 'random', 'port': 10006},
 ]
 
 def run_parallel_experiments(episodes=50, algorithms_config=None):
