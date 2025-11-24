@@ -424,8 +424,11 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
         state = get_state(world_state)
         action = agent.choose_action(state) if state else None
         next_state = None
+        
+        # Safety timeout: forzar terminación si no termina en 6500 pasos
+        max_steps_safety = 6500
 
-        while world_state.is_mission_running:
+        while world_state.is_mission_running and steps < max_steps_safety:
             if state and action:
                 # Check if it's a crafting action
                 if action.startswith("craft_"):
@@ -564,6 +567,12 @@ def train_agent(algorithm="qlearning", num_episodes=50, env_seed=123456, port=10
                 state = get_state(world_state)
                 if state:
                     action = agent.choose_action(state)
+        
+        # Si alcanzó el límite de pasos, forzar terminación
+        if steps >= max_steps_safety and world_state.is_mission_running:
+            print(f"\n⚠️  Límite de pasos alcanzado ({max_steps_safety}), forzando terminación...")
+            agent_host.sendCommand("quit")
+            time.sleep(0.5)
 
         # Check if episode was successful
         episode_success = False

@@ -17,3 +17,4 @@ __pycache__/
 *.pkl
 *.csv
 *.png
+3_entrega/madera/resultados/log_*

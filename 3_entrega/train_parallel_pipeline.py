@@ -28,25 +28,25 @@ STAGES = {
     2: {
         'name': 'piedra',
         'script': 'stone_agent.py',
-        'load_model': 'model.pkl',
+        'load_model': '_model.pkl',  # Se completará con {algorithm}_model.pkl
         'save_suffix': '_stone'
     },
     3: {
         'name': 'hierro',
         'script': 'iron_agent.py',
-        'load_model': 'stone_model.pkl',
+        'load_model': '_stone_model.pkl',  # Se completará con {algorithm}_stone_model.pkl
         'save_suffix': '_iron'
     },
     4: {
         'name': 'diamante',
         'script': 'diamond_agent.py',
-        'load_model': 'iron_model.pkl',
+        'load_model': '_iron_model.pkl',  # Se completará con {algorithm}_iron_model.pkl
         'save_suffix': '_diamond'
     },
     5: {
         'name': 'desde_cero',
         'script': 'from_scratch_agent.py',
-        'load_model': 'diamond_model.pkl',
+        'load_model': '_diamond_model.pkl',  # Se completará con {algorithm}_diamond_model.pkl
         'save_suffix': '_scratch'
     }
 }
@@ -118,7 +118,9 @@ def run_stage_parallel(stage_num, episodes, continuar, base_dir):
         
         # Agregar --load-model si es necesario
         if continuar and stage['load_model'] and stage_num > 1:
-            model_path = base_dir / 'entrenamiento_acumulado' / f"{algo}_{stage['load_model']}"
+            # Construir nombre correcto: {algorithm}{load_model}
+            # load_model ya tiene el formato "_model.pkl" o "_stage_model.pkl"
+            model_path = base_dir / 'entrenamiento_acumulado' / f"{algo}{stage['load_model']}"
             if model_path.exists():
                 cmd.extend(['--load-model', str(model_path)])
                 print(f"  ✓ {algo:20} → Cargará {model_path.name}")
