@@ -13,3 +13,6 @@ __pycache__/
 2_entrega/malmo/carlos/agente madera/modelo_agente_madera_plano.pkl
 2_entrega/malmo/carlos/agente madera/modelo_agente_madera.pkl
 
+3_entrega/hierro/resultados/log_*
+*.pkl
+*.csv

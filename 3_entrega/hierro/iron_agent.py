@@ -2,7 +2,7 @@
 Iron Pickaxe Crafting Agent - Stage 3
 Usa un pico de piedra (stone pickaxe) para recolectar 3 iron ore y craftear un iron pickaxe.
 Comienza con el inventario de un episodio exitoso de Stage 2.
-Objetivo: Recolectar 3 iron ore → Craftear iron pickaxe
+Objetivo: Recolectar 3 iron ingots → Craftear iron pickaxe
 Compatible con entrenamiento jerárquico: puede cargar modelos pre-entrenados de Stage 2.
 """
 
@@ -19,40 +19,51 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
-from algorithms import QLearningAgent, SarsaAgent, ExpectedSarsaAgent, DoubleQAgent, MonteCarloAgent, RandomAgent
-from metrics import MetricsCollector
+from algorithms import QLearningAgent, SarsaAgent, ExpectedSarsaAgent, DoubleQLearningAgent, MonteCarloAgent, RandomAgent
+from metrics import MetricsLogger
+
+# Malmo setup
+malmo_dir = os.environ.get('MALMO_DIR', '')
+if malmo_dir:
+    sys.path.append(os.path.join(malmo_dir, 'Python_Examples'))
 
 try:
     import MalmoPython
-except ImportError:
-    print("Error: MalmoPython no está instalado o no se puede importar")
+except ImportError as e:
+    print(f"Error importing MalmoPython: {e}")
+    import traceback
+    traceback.print_exc()
+    print("Please check your MALMO_DIR environment variable and ensure dependencies are installed.")
     sys.exit(1)
 
-def generar_mundo_hierro_xml(seed=123456):
+
+def generar_mundo_hierro_xml(seed=None):
     """
-    Genera el XML del mundo con iron ore disperso.
+    Genera el XML del mundo con iron blocks dispersos.
     - seed: semilla para generación determinística de bloques
     - Spawn: (0.5, 4, 0.5)
     - Dimensiones: 21x21 (x: -10 to 10, z: -10 to 10)
     - Piso: Obsidian (y=3, no se puede romper)
     - Paredes: Obsidian perimetral
-    - Iron ore: 20-30 bloques dispersos en y=4 y y=5
+    - Iron blocks: 20-30 bloques dispersos en y=4 y y=5 (dan iron_ingot al minarse, simplificación sin furnace)
     - Stone (opcional): 10-15 bloques adicionales para variedad
     """
-    rng = random.Random(seed)
+    rng = random.Random(seed) if seed is not None else random
     
     drawing_xml = ""
     
     # 1. Piso de obsidian (y=3)
     drawing_xml += '<DrawCuboid x1="-10" y1="3" z1="-10" x2="10" y2="3" z2="10" type="obsidian"/>\n'
     
-    # 2. Paredes de obsidian perimetrales (y=4 to y=6)
-    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="-10" y2="6" z2="10" type="obsidian"/>\n'
-    drawing_xml += '<DrawCuboid x1="10" y1="4" z1="-10" x2="10" y2="6" z2="10" type="obsidian"/>\n'
-    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="10" y2="6" z2="-10" type="obsidian"/>\n'
-    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="10" x2="10" y2="6" z2="10" type="obsidian"/>\n'
+    # 2. Paredes de obsidian perimetrales (y=4 to y=10)
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="-10" y2="10" z2="10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="10" y1="4" z1="-10" x2="10" y2="10" z2="10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="10" y2="10" z2="-10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="10" x2="10" y2="10" z2="10" type="obsidian"/>\n'
     
-    # 3. Generar iron ore (20-30 bloques)
+    # 3. Generar iron blocks (20-30 bloques)
+    # SIMPLIFICACION: usamos iron_block en vez de iron_ore
+    # Al romperlo, da iron_ingot directamente, evitando la necesidad de furnace
     num_iron = rng.randint(20, 30)
     iron_positions = set()
     
@@ -71,7 +82,7 @@ def generar_mundo_hierro_xml(seed=123456):
             pos = (x, y, z)
             if pos not in iron_positions:
                 iron_positions.add(pos)
-                drawing_xml += f'<DrawBlock x="{x}" y="{y}" z="{z}" type="iron_ore"/>\n'
+                drawing_xml += f'<DrawBlock x="{x}" y="{y}" z="{z}" type="iron_block"/>\n'
                 break
             attempts += 1
     
@@ -125,10 +136,9 @@ def generar_mundo_hierro_xml(seed=123456):
                 <Placement x="0.5" y="4" z="0.5" yaw="0"/>
                 <Inventory>
                     <!-- Starting inventory from successful stone stage -->
-                    <InventoryItem slot="0" type="diamond_axe"/>
-                    <InventoryItem slot="1" type="planks" quantity="3"/>
-                    <InventoryItem slot="2" type="wooden_pickaxe"/>
-                    <InventoryItem slot="3" type="stone_pickaxe"/>
+                    <InventoryItem slot="0" type="stone_pickaxe"/>
+                    <InventoryItem slot="1" type="stick" quantity="2"/>
+                    <InventoryItem slot="2" type="planks" quantity="5"/>
                 </Inventory>
             </AgentStart>
             <AgentHandlers>
@@ -147,7 +157,6 @@ def generar_mundo_hierro_xml(seed=123456):
                 <DiscreteMovementCommands/>
                 <InventoryCommands/>
                 <SimpleCraftCommands/>
-                <CraftCommands/>
                 <MissionQuitCommands/>
                 <ObservationFromRecentCommands/>
                 <ObservationFromHotBar/>
@@ -158,7 +167,6 @@ def generar_mundo_hierro_xml(seed=123456):
                 <RewardForCollectingItem>
                     <Item reward="500" type="log"/>
                     <Item reward="1000" type="stone"/>
-                    <Item reward="5000" type="iron_ore"/>
                     <Item reward="5000" type="iron_ingot"/>
                 </RewardForCollectingItem>
                 <RewardForTouchingBlockType>
@@ -169,12 +177,13 @@ def generar_mundo_hierro_xml(seed=123456):
         </AgentSection>
     </Mission>'''
 
+
 def get_state(world_state):
     """
     Enhanced state representation including inventory for Tech Tree
     Returns: (surroundings_tuple, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe, has_iron_pickaxe)
     
-    Nota: iron_ore se convierte automáticamente en iron_ingot al recolectar (simplificación)
+    Nota: Se usan iron_blocks que al minarse dan iron_ingot directamente (simplificación, no requiere furnace)
     """
     if not world_state.number_of_observations_since_last_state:
         return None
@@ -189,8 +198,6 @@ def get_state(world_state):
     wood_count = 0
     stone_count = 0
     iron_count = 0  # Incluye tanto iron_ore como iron_ingot
-    planks_count = 0
-    sticks_count = 0
     has_wooden_pickaxe = False
     has_stone_pickaxe = False
     has_iron_pickaxe = False
@@ -210,10 +217,6 @@ def get_state(world_state):
                 stone_count += quantity
             elif item_type in ["iron_ore", "iron_ingot"]:  # Contar ambos como iron
                 iron_count += quantity
-            elif item_type == "planks":
-                planks_count += quantity
-            elif item_type == "stick":
-                sticks_count += quantity
             elif item_type == "wooden_pickaxe":
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
@@ -231,12 +234,8 @@ def get_state(world_state):
                 wood_count += quantity
             elif item_type == "stone":
                 stone_count += quantity
-            elif item_type == "iron_ore":
+            elif item_type in ["iron_ore", "iron_ingot"]:
                 iron_count += quantity
-            elif item_type == "planks":
-                planks_count += quantity
-            elif item_type == "stick":
-                sticks_count += quantity
             elif item_type == "wooden_pickaxe":
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
@@ -244,7 +243,8 @@ def get_state(world_state):
             elif item_type == "iron_pickaxe":
                 has_iron_pickaxe = True
     
-    return (surroundings, wood_count, stone_count, iron_count, planks_count, sticks_count, has_wooden_pickaxe, has_stone_pickaxe, has_iron_pickaxe)
+    return (surroundings, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe, has_iron_pickaxe)
+
 
 def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_seed=123456, port=10000):
     """
@@ -276,7 +276,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
     elif algorithm == "expected_sarsa":
         agent = ExpectedSarsaAgent(actions)
     elif algorithm == "double_q":
-        agent = DoubleQAgent(actions)
+        agent = DoubleQLearningAgent(actions)
     elif algorithm == "monte_carlo":
         agent = MonteCarloAgent(actions)
     elif algorithm == "random":
@@ -285,100 +285,93 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
         raise ValueError(f"Unknown algorithm: {algorithm}")
     
     # Load pre-trained model from Stage 2 if provided
-    if load_model:
+    if load_model and os.path.exists(load_model):
         print(f"Loading pre-trained model from: {load_model}")
         agent.load_model(load_model)
     
     # Initialize metrics
-    metrics = MetricsCollector(algorithm)
+    metrics = MetricsLogger(f"{algorithm}_IronAgent")
     
     # Initialize Malmo
     agent_host = MalmoPython.AgentHost()
-    try:
-        agent_host.parse(sys.argv)
-    except RuntimeError as e:
-        print(f'ERROR: {e}')
-        print(agent_host.getUsage())
-        exit(1)
     
-    if agent_host.receivedArgument("help"):
-        print(agent_host.getUsage())
-        exit(0)
+    # Map each algorithm to a specific port (10001-10006)
+    algorithm_ports = {
+        'qlearning': 10001,
+        'sarsa': 10002,
+        'expected_sarsa': 10003,
+        'double_q': 10004,
+        'monte_carlo': 10005,
+        'random': 10006
+    }
+    # Override port with algorithm-specific port if not manually specified
+    if port == 10000:  # default value means user didn't specify --port
+        port = algorithm_ports.get(algorithm, 10001)
     
-    # Connect to Minecraft on specified port
+    print(f"Starting Stage 3 training with {algorithm} on port {port}...")
+    
+    # Create ClientPool
     client_pool = MalmoPython.ClientPool()
-    client_info = MalmoPython.ClientInfo("127.0.0.1", port)
-    client_pool.add(client_info)
-    
-    # Training loop
-    for episode in range(1, num_episodes + 1):
-        print(f"\n{'='*60}")
-        print(f"Episode {episode}/{num_episodes} - {algorithm.upper()}")
-        print(f"{'='*60}")
+    client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
+
+    # Mismo escenario de bloques para todos los episodios
+    mission_xml = generar_mundo_hierro_xml(seed=env_seed)
+
+    for episode in range(num_episodes):
+        agent.start_episode()
+        my_mission = MalmoPython.MissionSpec(mission_xml, True)
+        my_mission_record = MalmoPython.MissionRecordSpec()
         
-        # Generate mission with fixed seed
-        mission_xml = generar_mundo_hierro_xml(seed=env_seed)
-        mission = MalmoPython.MissionSpec(mission_xml, True)
-        mission_record = MalmoPython.MissionRecordSpec()
-        
-        # Start mission
         max_retries = 3
         for retry in range(max_retries):
             try:
-                agent_host.startMission(mission, client_pool, mission_record, 0, "IronStage3")
+                agent_host.startMission(my_mission, client_pool, my_mission_record, 0, "iron_agent_exp")
                 break
             except RuntimeError as e:
                 if retry == max_retries - 1:
-                    print(f"Error starting mission: {e}")
+                    print("Error starting mission:", e)
                     exit(1)
-                else:
-                    print(f"Retry {retry + 1}/{max_retries}...")
-                    time.sleep(2)
-        
-        # Wait for mission to start
-        print("Waiting for mission to start...")
+                time.sleep(2)
+
+        print(f"Waiting for mission (Episode {episode})...", end=' ')
         world_state = agent_host.getWorldState()
         while not world_state.has_mission_begun:
+            print(".", end="")
             time.sleep(0.1)
             world_state = agent_host.getWorldState()
             for error in world_state.errors:
-                print(f"Error: {error.text}")
-        
-        print("Mission started!")
-        
-        # Episode variables
-        state = get_state(world_state)
-        action = agent.choose_action(state) if state else 0
+                print("Error:", error.text)
+        print()
+
         total_reward = 0
         steps = 0
-        
-        # Track collection metrics
         wood_collected = 0
         stone_collected = 0
         iron_collected = 0
-        max_wood = 0
-        max_stone = 0
-        max_iron = 0
         prev_wood = 0
         prev_stone = 0
         prev_iron = 0
+        max_wood = 0
+        max_stone = 0
+        max_iron = 0
+        action_counts = {"move": 0, "turn": 0, "attack": 0, "craft": 0}
         
-        # Track action distribution
-        action_counts = {
-            'move': 0,
-            'turn': 0,
-            'attack': 0,
-            'craft': 0
-        }
-        
-        # Pitch auto-reset tracking
+        # Track pitch time for auto-reset using observation 'Pitch'
         pitch_start_time = None
-        pitch_threshold = 30.0
+        pitch_threshold = 5.0  # degrees: consider >5° as looking up/down
         
+        # Initial state
+        while world_state.is_mission_running and world_state.number_of_observations_since_last_state == 0:
+             world_state = agent_host.getWorldState()
+             time.sleep(0.1)
+        
+        state = get_state(world_state)
+        action = agent.choose_action(state) if state else None
+
         def auto_select_tool(world_state, agent_host):
             """
             Automatically selects the optimal tool based on the block in front.
-            Stage 3 (Iron): Uses stone_pickaxe for iron_ore
+            Stage 3 (Iron): Uses stone_pickaxe for iron_block
             """
             if world_state.number_of_observations_since_last_state > 0:
                 try:
@@ -388,8 +381,8 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                     if len(surroundings) > 37:
                         front_block = surroundings[37]
                         
-                        # Stage 3: Select stone_pickaxe for iron_ore
-                        if front_block == 'iron_ore':
+                        # Stage 3: Select stone_pickaxe for iron_block
+                        if front_block == 'iron_block':
                             # Find stone_pickaxe in hotbar (slots 0-8)
                             for slot in range(9):
                                 item_key = f"InventorySlot_{slot}_item"
@@ -399,28 +392,65 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                                     break
                 except Exception:
                     pass
-        
-        # Main episode loop
-        while world_state.is_mission_running:
-            steps += 1
+
+        def handle_crafting(action, state, agent_host):
+            """Handle crafting actions"""
+            if action == "craft_iron_pickaxe":
+                _, wood, stone, iron, has_wood_pick, has_stone_pick, has_iron_pick = state
+                if iron >= 3 and has_stone_pick and not has_iron_pick:
+                    return (True, 5000, "✓✓✓ Attempting to craft iron pickaxe...", False)
+                else:
+                    return (False, -10, "Cannot craft iron pickaxe (need 3 iron + stone pickaxe)", False)
+            elif action == "craft_stone_pickaxe" or action == "craft_wooden_pickaxe":
+                # Not used in this stage
+                return (False, -10, "Already have stone pickaxe", False)
             
-            if state:
-                # Execute action
-                action_str = actions[action]
-                agent_host.sendCommand(action_str)
+            return (False, 0, "", False)
+
+        next_state = None  # definimos aquí para usarlo después del bucle
+
+        while world_state.is_mission_running:
+            if state and action:
+                # Check if it's a crafting action
+                if action.startswith("craft_"):
+                    success, craft_reward, msg, should_quit = handle_crafting(action, state, agent_host)
+                    if msg and success:
+                        print(f"  {msg}")
+                    total_reward += craft_reward
+                else:
+                    agent_host.sendCommand(action)
                 
-                # Track action distribution
-                if 'move' in action_str or 'strafe' in action_str or 'pitch' in action_str:
-                    action_counts['move'] += 1
-                elif 'turn' in action_str:
-                    action_counts['turn'] += 1
-                elif 'attack' in action_str:
+                steps += 1
+                
+                # Auto-reset pitch
+                if steps % 20 == 0:
+                    agent_host.sendCommand("pitch 0")
+                
+                # Track action types
+                if "move" in action or "strafe" in action:
+                    action_counts["move"] += 1
+                elif "turn" in action or "pitch" in action:
+                    action_counts["turn"] += 1
+                    if "pitch" in action:
+                        total_reward -= 10
+                elif "jump" in action:
+                    action_counts["move"] += 1
+                elif "attack" in action:
                     # Auto-select optimal tool before attacking
                     auto_select_tool(world_state, agent_host)
                     
-                    action_counts['attack'] += 1
-                elif 'craft' in action_str:
-                    action_counts['craft'] += 1
+                    action_counts["attack"] += 1
+                    # Reward for attacking iron_block
+                    if state:
+                        surroundings, _, _, _, _, _, _ = state
+                        if len(surroundings) > 40:
+                            front_blocks = [surroundings[i] for i in [37, 38, 39, 40] if i < len(surroundings)]
+                            for block in front_blocks:
+                                if block == 'iron_block':
+                                    total_reward += 200
+                                    break
+                elif "craft" in action:
+                    action_counts["craft"] += 1
                 
                 time.sleep(0.02)
                 
@@ -434,7 +464,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                         pitch_val = obs_json.get('Pitch', None)
                         if pitch_val is None:
                             pitch_val = obs_json.get('pitch', None)
-
+                        
                         if pitch_val is not None:
                             pitch = float(pitch_val)
                             if abs(pitch) > pitch_threshold:
@@ -471,37 +501,20 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                 
                 # Check if episode goal achieved (crafted iron pickaxe)
                 if next_state:
-                    _, check_wood, check_stone, check_iron, check_planks, check_sticks, has_wood_pick, has_stone_pick, has_iron_pick = next_state
+                    _, check_wood, check_stone, check_iron, has_wood_pick, has_stone_pick, has_iron_pick = next_state
                     
                     # Show progress
                     if steps % 100 == 0:
-                        print(f"  [Progress] Iron: {check_iron}/3, Planks: {check_planks}, Sticks: {check_sticks}, Has Stone Pick: {has_stone_pick}, Has Iron Pick: {has_iron_pick}")
+                        print(f"  [Progress] Iron: {check_iron}/3, Has Stone Pick: {has_stone_pick}, Has Iron Pick: {has_iron_pick}")
                     
                     # Auto-craft when has 3+ iron and stone pickaxe
                     if check_iron >= 3 and has_stone_pick and not has_iron_pick:
-                        print(f"\n  >> Auto-crafting iron pickaxe (Iron: {check_iron}, Planks: {check_planks}, Sticks: {check_sticks})...")
+                        print(f"\n  >> Auto-crafting iron pickaxe (Iron: {check_iron})...")
                         
                         # Update max_iron before crafting
                         max_iron = max(max_iron, check_iron)
                         
-                        # Check if we need to craft sticks first
-                        if check_sticks < 2:
-                            sticks_needed = 2 - check_sticks
-                            planks_needed = 1 if sticks_needed <= 4 else 2
-                            
-                            if check_planks >= planks_needed:
-                                print(f"  >> Crafting sticks first (need {sticks_needed} sticks, have {check_planks} planks)...")
-                                agent_host.sendCommand("craft stick")
-                                time.sleep(0.3)
-                                check_sticks += 4
-                                check_planks -= 2
-                                print(f"  >> Crafted 4 sticks! Now have {check_sticks} sticks, {check_planks} planks")
-                            else:
-                                print(f"  ⚠ Warning: Not enough planks to craft sticks (need {planks_needed}, have {check_planks})")
-                                total_reward -= 500
-                        
-                        # Now craft iron pickaxe
-                        print(f"  >> Crafting iron pickaxe (Iron: {check_iron}, Sticks: {check_sticks})...")
+                        # Craft iron pickaxe (uses 3 iron + 2 sticks)
                         agent_host.sendCommand("craft iron_pickaxe")
                         time.sleep(0.3)
                         
@@ -520,7 +533,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                                 print(f"\n{'='*60}")
                                 print(f"🎉 SUCCESS! Crafted iron pickaxe - Stage 3 complete!")
                                 print(f"{'='*60}")
-                                total_reward += 15000  # Success reward
+                                total_reward += 10000  # Success reward
                                 
                                 # Update next_state to reflect post-crafting inventory
                                 world_state = agent_host.getWorldState()
@@ -535,7 +548,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                 
                 # Track collection by inventory changes
                 if next_state:
-                    _, cur_wood, cur_stone, cur_iron, cur_planks, cur_sticks, _, _, _ = next_state
+                    _, cur_wood, cur_stone, cur_iron, _, _, _ = next_state
                     
                     if cur_wood > prev_wood:
                         wood_collected += (cur_wood - prev_wood)
@@ -588,7 +601,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
             if has_iron_pick:
                 episode_success = True
         
-        if not episode_success and total_reward >= 15000:
+        if not episode_success and total_reward >= 10000:
             episode_success = True
         
         print(f"Episode {episode} ended. Reward: {total_reward}, Iron in inventory: {final_iron_count}, Iron collected: {max_iron}, Stone: {max_stone}, Wood: {max_wood}, Success: {episode_success}")
@@ -602,8 +615,9 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
     os.makedirs('../entrenamiento_acumulado', exist_ok=True)
     agent.save_model(f"../entrenamiento_acumulado/{algorithm}_iron_model.pkl")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run Iron Ore Agent - Stage 3')
+    parser = argparse.ArgumentParser(description='Run Iron Pickaxe Agent - Stage 3')
     parser.add_argument('--algorithm', type=str, default='qlearning', 
                         choices=['qlearning', 'sarsa', 'expected_sarsa', 'double_q', 'monte_carlo', 'random'],
                         help='RL algorithm to use')

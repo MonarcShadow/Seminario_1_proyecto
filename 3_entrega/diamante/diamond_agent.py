@@ -19,13 +19,21 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
-from algorithms import QLearningAgent, SarsaAgent, ExpectedSarsaAgent, DoubleQAgent, MonteCarloAgent, RandomAgent
-from metrics import MetricsCollector
+from algorithms import QLearningAgent, SarsaAgent, ExpectedSarsaAgent, DoubleQLearningAgent, MonteCarloAgent, RandomAgent
+from metrics import MetricsLogger
+
+# Malmo setup
+malmo_dir = os.environ.get('MALMO_DIR', '')
+if malmo_dir:
+    sys.path.append(os.path.join(malmo_dir, 'Python_Examples'))
 
 try:
     import MalmoPython
-except ImportError:
-    print("Error: MalmoPython no está instalado o no se puede importar")
+except ImportError as e:
+    print(f"Error importing MalmoPython: {e}")
+    import traceback
+    traceback.print_exc()
+    print("Please check your MALMO_DIR environment variable and ensure dependencies are installed.")
     sys.exit(1)
 
 def generar_mundo_diamante_xml(seed=123456):
@@ -308,7 +316,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
     elif algorithm == "expected_sarsa":
         agent = ExpectedSarsaAgent(actions)
     elif algorithm == "double_q":
-        agent = DoubleQAgent(actions)
+        agent = DoubleQLearningAgent(actions)
     elif algorithm == "monte_carlo":
         agent = MonteCarloAgent(actions)
     elif algorithm == "random":
@@ -322,20 +330,12 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
         agent.load_model(load_model)
     
     # Initialize metrics
-    metrics = MetricsCollector(algorithm)
+    metrics = MetricsLogger(f"{algorithm}_DiamondAgent")
     
     # Initialize Malmo
     agent_host = MalmoPython.AgentHost()
-    try:
-        agent_host.parse(sys.argv)
-    except RuntimeError as e:
-        print(f'ERROR: {e}')
-        print(agent_host.getUsage())
-        exit(1)
-    
-    if agent_host.receivedArgument("help"):
-        print(agent_host.getUsage())
-        exit(0)
+    # Note: No llamamos a agent_host.parse(sys.argv) para evitar conflictos
+    # con los argumentos de argparse de Python (--algorithm, --episodes, etc.)
     
     # Connect to Minecraft on specified port
     client_pool = MalmoPython.ClientPool()

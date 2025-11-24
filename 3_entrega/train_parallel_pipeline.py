@@ -135,6 +135,7 @@ def run_stage_parallel(stage_num, episodes, continuar, base_dir):
     # Iniciar todos los procesos
     global processes
     processes = []
+    process_start_times = {}  # Track individual start times
     start_time = time.time()
     
     for algo, cmd, cwd in commands:
@@ -148,9 +149,10 @@ def run_stage_parallel(stage_num, episodes, continuar, base_dir):
                 cwd=str(cwd),
                 stdout=f,
                 stderr=subprocess.STDOUT,
-                text=True
+                universal_newlines=True
             )
             processes.append(proc)
+            process_start_times[proc.pid] = time.time()
             print(f"  ✓ [{algo:18}] PID={proc.pid:6} Puerto={port} Log={log_file.name}")
     
     print(f"\n⏳ Esperando a que terminen los {len(processes)} procesos...")
@@ -169,13 +171,13 @@ def run_stage_parallel(stage_num, episodes, continuar, base_dir):
             ret = proc.poll()
             if ret is not None:
                 algo = ALGORITHMS[i]
+                proc_time = time.time() - process_start_times[proc.pid]
                 if ret == 0:
                     completed.append(proc)
-                    elapsed = time.time() - start_time
-                    print(f"  ✅ [{algo:18}] Completado (Exit={ret}) - {elapsed:.1f}s transcurridos")
+                    print(f"  ✅ [{algo:18}] Completado en {proc_time:.1f}s (Exit={ret})")
                 else:
                     failed.append(proc)
-                    print(f"  ❌ [{algo:18}] ERROR (Exit={ret})")
+                    print(f"  ❌ [{algo:18}] ERROR en {proc_time:.1f}s (Exit={ret})")
         
         time.sleep(2)  # Verificar cada 2 segundos
     
@@ -185,6 +187,21 @@ def run_stage_parallel(stage_num, episodes, continuar, base_dir):
     print(f"   Exitosos: {len(completed)}/{len(processes)}")
     print(f"   Fallidos:  {len(failed)}/{len(processes)}")
     print(f"{'='*80}")
+    
+    # Verificar que se generaron CSV y PNG
+    metrics_dir = stage_dir / 'metrics_data'
+    if metrics_dir.exists():
+        csv_files = list(metrics_dir.glob('*.csv'))
+        png_files = list(metrics_dir.glob('*.png'))
+        # Count recent files (from this run - last 5 minutes)
+        recent_csvs = [f for f in csv_files if time.time() - f.stat().st_mtime < 300]
+        recent_pngs = [f for f in png_files if time.time() - f.stat().st_mtime < 300]
+        
+        print(f"\n📊 Métricas generadas:")
+        print(f"   CSV: {len(recent_csvs)} archivos nuevos en {metrics_dir.name}/")
+        print(f"   PNG: {len(recent_pngs)} gráficos nuevos")
+        if len(recent_csvs) < len(completed):
+            print(f"   ⚠️  Advertencia: Se esperaban {len(completed)} CSV pero solo se encontraron {len(recent_csvs)}")
     
     # Verificar que los modelos se guardaron
     if continuar and stage_num < 5:  # Si hay siguiente etapa
