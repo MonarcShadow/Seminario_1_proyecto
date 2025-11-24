@@ -1,3 +1,11 @@
+"""
+Stone Pickaxe Crafting Agent - Stage 2
+Usa un pico de madera (wooden pickaxe) para recolectar 3 stone y craftear un stone pickaxe.
+Comienza con el inventario de un episodio exitoso de Stage 1.
+Objetivo: Recolectar 3 stone → Craftear stone pickaxe
+Compatible con entrenamiento jerárquico: puede cargar modelos pre-entrenados de Stage 1.
+"""
+
 import os
 import sys
 import time
@@ -26,18 +34,14 @@ except ImportError as e:
     print("Please check your MALMO_DIR environment variable and ensure dependencies are installed.")
     sys.exit(1)
 
-def generar_mundo_piedra_xml(seed=None):
+
+def generar_mundo_completo_xml(seed=None):
     """
-    Generates XML for stone mining world
-    Agent starts with wooden pickaxe, planks, and sticks
-    
-    Ahora usa un RNG local basado en 'seed' para que el mundo
-    sea determinista sin afectar el random global.
+    Genera el drawing XML del mundo COMPLETO con TODOS los materiales.
+    ESTA FUNCIÓN ES IDÉNTICA EN LOS 5 AGENTES.
     """
-    # RNG local (no toca random.seed global)
     rng = random.Random(seed) if seed is not None else random
     
-    # Config - Arena with stone blocks
     radio = 10
     posiciones_usadas = set()
     bloques_generados = []
@@ -55,7 +59,23 @@ def generar_mundo_piedra_xml(seed=None):
         z = rng.randint(-radio + 2, radio - 2)
         return x, z
     
-    # 1. Generate Stone (High Density: 30-40 blocks)
+    # 1. Wood blocks (40-60)
+    num_madera = rng.randint(40, 60)
+    for _ in range(num_madera):
+        intentos = 0
+        while intentos < 50:
+            x, z = generar_posicion_aleatoria()
+            if pos_valida(x, z):
+                altura = rng.choice([0, 0, 1, 1, 2])
+                tipo = "log"
+                for h in range(altura + 1):
+                    y = 4 + h
+                    bloques_generados.append((x, y, z, tipo))
+                posiciones_usadas.add((x, z))
+                break
+            intentos += 1
+    
+    # 2. Stone blocks (30-40)
     num_piedra = rng.randint(30, 40)
     for _ in range(num_piedra):
         intentos = 0
@@ -66,35 +86,57 @@ def generar_mundo_piedra_xml(seed=None):
                 posiciones_usadas.add((x, z))
                 break
             intentos += 1
-
-    # 2. Generate some wood for variety (optional, lower density)
-    num_madera = rng.randint(5, 10)
-    for _ in range(num_madera):
+    
+    # 3. Iron ore (20-30) - Se puede minar con stone_pickaxe
+    num_hierro = rng.randint(20, 30)
+    for _ in range(num_hierro):
         intentos = 0
         while intentos < 50:
             x, z = generar_posicion_aleatoria()
             if pos_valida(x, z):
-                altura = rng.choice([0, 1])
-                tipo = 'log'
-                for h in range(altura + 1):
-                    y = 4 + h
-                    bloques_generados.append((x, y, z, tipo))
+                bloques_generados.append((x, 4, z, "iron_ore"))  # ✅ CORRECTO
                 posiciones_usadas.add((x, z))
                 break
             intentos += 1
-            
-    # Drawing XML
-    drawing_xml = ""
-    # Obsidian floor and walls
-    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="3" z1="{-radio}" x2="{radio}" y2="3" z2="{radio}" type="obsidian"/>\n'
-    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="4" z1="{-radio}" x2="{radio}" y2="10" z2="{-radio}" type="obsidian"/>\n'
-    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="4" z1="{radio}" x2="{radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
-    drawing_xml += f'<DrawCuboid x1="{radio}" y1="4" z1="{-radio}" x2="{radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
-    drawing_xml += f'<DrawCuboid x1="{-radio}" y1="4" z1="{-radio}" x2="{-radio}" y2="10" z2="{radio}" type="obsidian"/>\n'
+
     
+    # 4. Diamond ore (3-5 bloques)
+    num_diamante = rng.randint(3, 5)
+    for _ in range(num_diamante):
+        intentos = 0
+        while intentos < 50:
+            x, z = generar_posicion_aleatoria()
+            if pos_valida(x, z):
+                bloques_generados.append((x, 4, z, "diamond_ore"))
+                posiciones_usadas.add((x, z))
+                break
+            intentos += 1
+    
+    drawing_xml = ""
+    
+    # Piso de obsidian (y=3)
+    drawing_xml += '<DrawCuboid x1="-10" y1="3" z1="-10" x2="10" y2="3" z2="10" type="obsidian"/>\n'
+    
+    # Paredes de obsidian
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="-10" y2="10" z2="10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="10" y1="4" z1="-10" x2="10" y2="10" z2="10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="-10" x2="10" y2="10" z2="-10" type="obsidian"/>\n'
+    drawing_xml += '<DrawCuboid x1="-10" y1="4" z1="10" x2="10" y2="10" z2="10" type="obsidian"/>\n'
+    
+    # Dibujar todos los bloques
     for x, y, z, tipo in bloques_generados:
         drawing_xml += f'<DrawBlock x="{x}" y="{y}" z="{z}" type="{tipo}"/>\n'
+    
+    return drawing_xml
 
+
+def generar_mundo_xml(seed=None):
+    """
+    Genera el XML completo para stone_agent (Stage 2).
+    Usa el mismo mundo que todos los demás agentes, solo cambia el inventario.
+    """
+    drawing_xml = generar_mundo_completo_xml(seed)
+    
     return f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
         <About>
@@ -123,9 +165,9 @@ def generar_mundo_piedra_xml(seed=None):
                 <Placement x="0.5" y="4" z="0.5" yaw="0"/>
                 <Inventory>
                     <!-- Starting inventory from successful wood stage -->
-                    <InventoryItem slot="0" type="wooden_pickaxe"/>
-                    <InventoryItem slot="1" type="stick" quantity="2"/>
-                    <InventoryItem slot="2" type="planks" quantity="7"/>
+                    <InventoryItem slot="0" type="diamond_axe"/>
+                    <InventoryItem slot="1" type="planks" quantity="7"/>
+                    <InventoryItem slot="2" type="wooden_pickaxe"/>
                 </Inventory>
             </AgentStart>
             <AgentHandlers>
@@ -152,9 +194,10 @@ def generar_mundo_piedra_xml(seed=None):
                     <Range name="entities" xrange="5" yrange="3" zrange="5"/>
                 </ObservationFromNearbyEntities>
                 <RewardForCollectingItem>
-                    <Item reward="1000" type="log"/>
-                    <Item reward="2000" type="stone"/>
-                    <Item reward="5000" type="iron_ore"/>
+                    <Item reward="500" type="log"/>
+                    <Item reward="1000" type="stone"/>
+                    <Item reward="5000" type="iron_ingot"/>
+                    <Item reward="10000" type="diamond"/>
                 </RewardForCollectingItem>
                 <RewardForTouchingBlockType>
                     <Block reward="-1" type="lava"/>
@@ -164,10 +207,14 @@ def generar_mundo_piedra_xml(seed=None):
         </AgentSection>
     </Mission>'''
 
+
 def get_state(world_state):
     """
     Enhanced state representation including inventory for Tech Tree
-    Returns: (surroundings_tuple, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe)
+    Returns: (surroundings_tuple, wood_count, stone_count, iron_count, diamond_count,
+              planks_count, sticks_count, has_wooden_pickaxe, has_stone_pickaxe, has_iron_pickaxe)
+    
+    10 elementos - DEBE SER IDÉNTICO entre todos los stages para compatibilidad .pkl
     """
     if not world_state.number_of_observations_since_last_state:
         return None
@@ -175,17 +222,21 @@ def get_state(world_state):
     msg = world_state.observations[-1].text
     obs = json.loads(msg)
     
-    # Get surroundings (now 5x5 grid)
+    # Get surroundings (5x5 grid)
     surroundings = tuple(obs.get("surroundings5x5", []))
     
     # Count inventory items
     wood_count = 0
     stone_count = 0
     iron_count = 0
+    diamond_count = 0
+    planks_count = 0
+    sticks_count = 0
     has_wooden_pickaxe = False
     has_stone_pickaxe = False
+    has_iron_pickaxe = False
     
-    # Method 1: Check flat inventory structure (InventorySlot_0_item, etc.)
+    # Method 1: Check flat inventory structure
     for i in range(45):
         item_key = f"InventorySlot_{i}_item"
         size_key = f"InventorySlot_{i}_size"
@@ -198,12 +249,20 @@ def get_state(world_state):
                 wood_count += quantity
             elif item_type == "stone":
                 stone_count += quantity
-            elif item_type == "iron_ore":
+            elif item_type in ["iron_ore", "iron_ingot", "iron_block"]:
                 iron_count += quantity
+            elif item_type == "diamond":
+                diamond_count += quantity
+            elif item_type == "planks":
+                planks_count += quantity
+            elif item_type == "stick":
+                sticks_count += quantity
             elif item_type == "wooden_pickaxe":
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
                 has_stone_pickaxe = True
+            elif item_type == "iron_pickaxe":
+                has_iron_pickaxe = True
     
     # Method 2: Also check list format (backup)
     if "inventory" in obs:
@@ -215,14 +274,88 @@ def get_state(world_state):
                 wood_count += quantity
             elif item_type == "stone":
                 stone_count += quantity
-            elif item_type == "iron_ore":
+            elif item_type in ["iron_ore", "iron_ingot", "iron_block"]:
                 iron_count += quantity
+            elif item_type == "diamond":
+                diamond_count += quantity
+            elif item_type == "planks":
+                planks_count += quantity
+            elif item_type == "stick":
+                sticks_count += quantity
             elif item_type == "wooden_pickaxe":
                 has_wooden_pickaxe = True
             elif item_type == "stone_pickaxe":
                 has_stone_pickaxe = True
+            elif item_type == "iron_pickaxe":
+                has_iron_pickaxe = True
     
-    return (surroundings, wood_count, stone_count, iron_count, has_wooden_pickaxe, has_stone_pickaxe)
+    return (surroundings, wood_count, stone_count, iron_count, diamond_count,
+            planks_count, sticks_count, has_wooden_pickaxe, has_stone_pickaxe, has_iron_pickaxe)
+
+
+def auto_select_tool(world_state, agent_host):
+    """
+    Automatically selects the optimal tool based on the block in front.
+    Stage 2 (Stone): Uses wooden_pickaxe for stone
+    """
+    if world_state.number_of_observations_since_last_state > 0:
+        try:
+            obs = json.loads(world_state.observations[-1].text)
+            surroundings = obs.get("surroundings5x5", [])
+            
+            if len(surroundings) > 37:
+                front_block = surroundings[37]
+                
+                # Stage 2: Select wooden_pickaxe for stone
+                if front_block == 'stone':
+                    # Find wooden_pickaxe in hotbar (slots 0-8)
+                    for slot in range(9):
+                        item_key = f"InventorySlot_{slot}_item"
+                        if item_key in obs and obs[item_key] == "wooden_pickaxe":
+                            agent_host.sendCommand(f"hotbar.{slot+1} 1")
+                            agent_host.sendCommand(f"hotbar.{slot+1} 0")
+                            break
+        except Exception:
+            pass
+
+
+def handle_crafting(action, state, agent_host):
+    """
+    Handle crafting actions with intelligent sub-crafting
+    If missing sticks/planks, auto-craft them first
+    """
+    if action == "craft_stone_pickaxe":
+        _, wood, stone, iron, diamond, planks, sticks, has_wood_pick, has_stone_pick, has_iron_pick = state
+        
+        # Check requirements: 3 stone + 2 sticks
+        if stone >= 3 and has_wood_pick and not has_stone_pick:
+            # Check if we have enough sticks
+            if sticks < 2:
+                # Need to craft sticks from planks
+                if planks >= 2:
+                    print("  [AUTO-CRAFT] Crafting sticks from planks...")
+                    agent_host.sendCommand("craft stick")
+                    time.sleep(0.2)
+                    return (False, 50, "Crafted sticks", False)
+                elif wood >= 1:
+                    # Craft planks from wood first
+                    print("  [AUTO-CRAFT] Crafting planks from wood...")
+                    agent_host.sendCommand("craft planks")
+                    time.sleep(0.2)
+                    return (False, 50, "Crafted planks", False)
+                else:
+                    return (False, -10, "Need more materials for sticks", False)
+            else:
+                # Have everything, craft stone pickaxe
+                return (True, 5000, "✓✓✓ Attempting to craft stone pickaxe...", False)
+        else:
+            return (False, -10, "Cannot craft stone pickaxe (need 3 stone + wooden pickaxe)", False)
+    elif action == "craft_wooden_pickaxe":
+        # Not used in this stage
+        return (False, -10, "Already have wooden pickaxe", False)
+    
+    return (False, 0, "", False)
+
 
 def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_seed=123456, port=10000):
     """
@@ -291,7 +424,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
     client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
 
     # Mismo escenario de bloques para todos los episodios
-    mission_xml = generar_mundo_piedra_xml(seed=env_seed)
+    mission_xml = generar_mundo_xml(seed=env_seed)
 
     for episode in range(num_episodes):
         agent.start_episode()
@@ -343,47 +476,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
         
         state = get_state(world_state)
         action = agent.choose_action(state) if state else None
-
-        def auto_select_tool(world_state, agent_host):
-            """
-            Automatically selects the optimal tool based on the block in front.
-            Stage 2 (Stone): Uses wooden_pickaxe for stone
-            """
-            if world_state.number_of_observations_since_last_state > 0:
-                try:
-                    obs = json.loads(world_state.observations[-1].text)
-                    surroundings = obs.get("surroundings5x5", [])
-                    
-                    if len(surroundings) > 37:
-                        front_block = surroundings[37]
-                        
-                        # Stage 2: Select wooden_pickaxe for stone
-                        if front_block == 'stone':
-                            # Find wooden_pickaxe in hotbar (slots 0-8)
-                            for slot in range(9):
-                                item_key = f"InventorySlot_{slot}_item"
-                                if item_key in obs and obs[item_key] == "wooden_pickaxe":
-                                    agent_host.sendCommand(f"hotbar.{slot+1} 1")  # Select slot (1-indexed)
-                                    agent_host.sendCommand(f"hotbar.{slot+1} 0")
-                                    break
-                except Exception:
-                    pass
-
-        def handle_crafting(action, state, agent_host):
-            """Handle crafting actions"""
-            if action == "craft_stone_pickaxe":
-                _, wood, stone, iron, has_wood_pick, has_stone_pick = state
-                if stone >= 3 and has_wood_pick and not has_stone_pick:
-                    return (True, 5000, "✓✓✓ Attempting to craft stone pickaxe...", False)
-                else:
-                    return (False, -10, "Cannot craft stone pickaxe (need 3 stone + wooden pickaxe)", False)
-            elif action == "craft_wooden_pickaxe":
-                # Not used in this stage
-                return (False, -10, "Already have wooden pickaxe", False)
-            
-            return (False, 0, "", False)
-
-        next_state = None  # definimos aquí para usarlo después del bucle
+        next_state = None
 
         while world_state.is_mission_running:
             if state and action:
@@ -418,7 +511,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                     action_counts["attack"] += 1
                     # Reward for attacking stone
                     if state:
-                        surroundings, _, _, _, _, _ = state
+                        surroundings, _, _, _, _, _, _, _, _, _ = state
                         if len(surroundings) > 40:
                             front_blocks = [surroundings[i] for i in [37, 38, 39, 40] if i < len(surroundings)]
                             for block in front_blocks:
@@ -477,7 +570,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                 
                 # Check if episode goal achieved (crafted stone pickaxe)
                 if next_state:
-                    _, check_wood, check_stone, check_iron, has_wood_pick, has_stone_pick = next_state
+                    _, check_wood, check_stone, check_iron, check_diamond, check_planks, check_sticks, has_wood_pick, has_stone_pick, has_iron_pick = next_state
                     
                     # Show progress
                     if steps % 100 == 0:
@@ -489,6 +582,19 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                         
                         # Update max_stone before crafting
                         max_stone = max(max_stone, check_stone)
+                        
+                        # Check if we need to craft sticks first
+                        if check_sticks < 2:
+                            if check_planks >= 2:
+                                print("  [AUTO-CRAFT] Need sticks, crafting from planks...")
+                                agent_host.sendCommand("craft stick")
+                                time.sleep(0.3)
+                                continue
+                            elif check_wood >= 1:
+                                print("  [AUTO-CRAFT] Need planks first, crafting from wood...")
+                                agent_host.sendCommand("craft planks")
+                                time.sleep(0.3)
+                                continue
                         
                         # Craft stone pickaxe (uses 3 stone + 2 sticks)
                         agent_host.sendCommand("craft stone_pickaxe")
@@ -524,7 +630,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
                 
                 # Track collection by inventory changes
                 if next_state:
-                    _, cur_wood, cur_stone, cur_iron, _, _ = next_state
+                    _, cur_wood, cur_stone, cur_iron, _, _, _, _, _, _ = next_state
                     
                     if cur_wood > prev_wood:
                         wood_collected += (cur_wood - prev_wood)
@@ -573,7 +679,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
         final_stone_count = 0
         
         if next_state:
-            _, _, final_stone_count, _, _, has_stone_pick = next_state
+            _, _, final_stone_count, _, _, _, _, _, has_stone_pick, _ = next_state
             if has_stone_pick:
                 episode_success = True
         
@@ -590,6 +696,7 @@ def train_agent(algorithm="qlearning", num_episodes=50, load_model=None, env_see
     metrics.plot_metrics()
     os.makedirs('../entrenamiento_acumulado', exist_ok=True)
     agent.save_model(f"../entrenamiento_acumulado/{algorithm}_stone_model.pkl")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run Stone Pickaxe Agent - Stage 2')

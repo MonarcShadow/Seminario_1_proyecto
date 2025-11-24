@@ -16,3 +16,4 @@ __pycache__/
 3_entrega/hierro/resultados/log_*
 *.pkl
 *.csv
+*.png
